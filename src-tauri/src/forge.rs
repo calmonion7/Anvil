@@ -229,6 +229,8 @@ pub struct Snapshot {
     pub done_total: usize,
     pub followups: Vec<Followup>,
     pub errors: Vec<FileError>,
+    /// `running.md`나 `drive.md`의 `session:` — 이 claude 세션이 지금 활성 작업을 실행 중이다.
+    pub driving_session: Option<String>,
 }
 
 // ---------- 읽기 도우미 ----------
@@ -415,6 +417,7 @@ pub fn snapshot_with_head(project: &Path, head: &Head) -> Snapshot {
         done_total: 0,
         followups: vec![],
         errors: vec![],
+        driving_session: None,
     };
     if !s.has_forge {
         s.headline = "forge 없음".into();
@@ -431,6 +434,9 @@ pub fn snapshot_with_head(project: &Path, head: &Head) -> Snapshot {
     }
     s.active = read_active(&mut r, &root, loop_text.as_deref());
     s.backlog = read_backlog(&mut r, &root.join("backlog"));
+    s.driving_session = ["running.md", "drive.md"]
+        .iter()
+        .find_map(|f| r.read(&root.join(f)).and_then(|t| status_field(&t, "session")));
     for d in sub_dirs(&root.join("executed")) {
         let dir = root.join("executed").join(&d);
         if let Some(card) = read_task_dir(&mut r, &dir, &d) {

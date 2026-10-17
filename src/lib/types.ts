@@ -38,7 +38,16 @@ export interface Snapshot {
   active: ActiveTask | null; loopState: LoopState | null;
   backlog: PlanCard[]; executed: TaskCard[]; done: TaskCard[]; doneTotal: number;
   followups: Followup[]; errors: FileError[];
+  /** running.md·drive.md의 session: — 이 claude 세션이 활성 작업을 실행 중 */
+  drivingSession: string | null;
 }
+
+export type SessionStateName = "working" | "waiting" | "ended" | "starting";
+
+/** 훅이 남긴 세션 상태 + tmux 생존 여부(src-tauri/src/session.rs) */
+export interface SessionState { state: SessionStateName; sessionId: string | null; alive: boolean }
+
+export type Role = "plan" | "run";
 
 /** 열린 문서 탭 하나 */
 export interface DocTab { project: string; rel: string; label: string }

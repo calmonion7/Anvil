@@ -216,6 +216,18 @@ fn broken_backlog_file_is_isolated() {
     assert!(s.errors[0].path.ends_with("backlog/x.md"));
 }
 
+// ---------- 세션과 작업 연결 ----------
+
+#[test]
+fn driving_session_comes_from_running_or_drive_marker() {
+    let p = temp_project(None, Some("ref: refs/heads/main\n"));
+    assert_eq!(forge::snapshot(p.path()).driving_session, None, "표지가 없으면 짐작으로 짝짓지 않는다");
+    fs::write(p.path().join(".forge/drive.md"), "# DRIVE\nstarted: 1\nblocked: 0\nsession: abc-123\n").unwrap();
+    assert_eq!(forge::snapshot(p.path()).driving_session.as_deref(), Some("abc-123"));
+    fs::write(p.path().join(".forge/running.md"), "<!-- forge-running: x -->\nworkflow: pending\nsession: run-9\n").unwrap();
+    assert_eq!(forge::snapshot(p.path()).driving_session.as_deref(), Some("run-9"));
+}
+
 #[test]
 fn no_forge_dir_is_reported() {
     let dir = tempfile::tempdir().unwrap();

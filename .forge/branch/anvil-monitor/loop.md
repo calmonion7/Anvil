@@ -4,7 +4,7 @@ replan-round: 1
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: none
+wall: unverifiable-uat (C3 — #2 anvil-monitor-2of3의 UAT (a)~(d) 사람 판정 대기. DoD 1·2·3과 (e)는 통과)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)

@@ -2,7 +2,11 @@
   import type { Snapshot, Stage, CheckResult } from "./types";
   import { dayLabel, splitTitle, priorityLabel, inlineCode, norm } from "./format";
 
-  let { snap, onOpen }: { snap: Snapshot; onOpen: (rel: string, label: string) => void } = $props();
+  let {
+    snap,
+    onOpen,
+    chips = [],
+  }: { snap: Snapshot; onOpen: (rel: string, label: string) => void; chips?: { text: string; pip: string }[] } = $props();
 
   const DONE_PAGE = 20;
   let showAllDone = $state(false);
@@ -48,6 +52,9 @@
     <span class="t1">{snap.name}</span>
     <span class="chip">⎇ {snap.root.branch ?? "브랜치 없음"} · {snap.root.rel}/</span>
     {#if snap.root.warning}<span class="chip warn">{snap.root.warning}</span>{/if}
+    {#each chips as c (c.text)}
+      <span class="chip" class:warn={c.pip === "wait"}><span class="pip {c.pip}"></span>{c.text}</span>
+    {/each}
     <span class="sp"></span>
   </div>
 
