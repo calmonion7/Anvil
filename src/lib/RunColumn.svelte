@@ -115,14 +115,17 @@
 
   /* 「지금」 띠 — 번호·제목, 단계, 문서 버튼을 한 줄에. 현재 단계 클래스 `now`와 겹치지 않게 `band` */
   .band { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-  .steps { flex: none; display: flex; align-items: center; gap: 4px; }
-  .step { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .step .n { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 10px; }
+  /* 단계 묶음은 폭을 내용에서 잰다 — WebKit이 그 계산에서 flex gap·flex-basis를 빼먹어 뒤 버튼이 '봉인'을 덮었다.
+     간격은 margin, 연결선 폭은 width로 준다. */
+  .steps { flex: none; display: flex; align-items: center; }
+  .steps > * + * { margin-left: 4px; }
+  .step { display: flex; align-items: center; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .step .n { flex: none; margin-right: 4px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 10px; }
   .step.done { color: var(--ink2); }
   .step.done .n { background: var(--ink2); border-color: var(--ink2); color: var(--surface); }
   .step.now { color: var(--ink); font-weight: 600; }
   .step.now .n { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
-  .bar { flex: 0 0 12px; height: 1.5px; background: var(--line); }
+  .bar { flex: none; width: 12px; height: 1.5px; background: var(--line); }
   .awaiting { flex: 1; min-width: 0; display: flex; gap: 12px; overflow: hidden; }
   .link { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .link:hover { text-decoration: underline; }
