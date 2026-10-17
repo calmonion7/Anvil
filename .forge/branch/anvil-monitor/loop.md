@@ -1,10 +1,10 @@
 # LOOP — Anvil #1~#3(보드 모니터 · tmux 세션 · 버튼)을 구현해 세 작업 모두 UAT 통과로 봉인한다
 started: 2026-10-17
-replan-round: 0
+replan-round: 1
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: unverifiable-uat (C3 — #1 anvil-monitor-1of3의 UAT (a)~(f) 화면 판정 대기. DoD 1·2와 (g) 메모리는 통과)
+wall: unverifiable-uat (C3 — #1 수리 r1 뒤 UAT (a)~(f) 재판정 대기)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
@@ -14,7 +14,7 @@ wall: unverifiable-uat (C3 — #1 anvil-monitor-1of3의 UAT (a)~(f) 화면 판�
 ## Check progress (updated after EVERY stop-condition run — drives the no-progress & tension walls & fg-status)
 - C1: not run
 - C2: not run
-- C3: not run
+- C3: not run · tried: anvil-monitor-1of3-repair-r1 (UAT 실패 — 후속후보·최근 완료 카드 제목이 안 보임 → 열 자식 flex-shrink 제거)
 
 ## Authorized replan scope
 - 실패한 정지 조건 검사에 직접 연결되는 fix-forward 작업만, Anvil 레포(이 워크트리) 안에서.

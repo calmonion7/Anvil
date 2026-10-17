@@ -34,3 +34,9 @@
 5개 프로젝트를 앱 데이터 `projects.json`에 등록하고 debug `.app`을 띄운 뒤 1분 3초 시점 측정(`footprint` = 활성 상태 보기의 '메모리' 열):
 - anvil 28MB + WebContent 50MB = **78MB** (목표 200MB 이하 ✅). GPU 13MB · Networking 4.8MB까지 더하면 약 96MB.
 - 참고 RSS: anvil 103MB · WebContent 62MB · GPU 30MB · Networking 12MB.
+
+## 수리 r1 (fg-loop 제자리 수리 · 재계획 1/3)
+- UAT 결과(사람): 후속후보·최근 완료 열의 카드 제목이 안 보임 → `verified: failed`.
+- 원인: 열이 세로 flex 스크롤 컨테이너인데 카드에 `min-height: 44px`를 줘서 flex 기본 최소 높이(내용 높이)가 덮어써졌다. 카드가 넘치는 열에서 카드가 44px로 줄고 위쪽 제목 줄이 잘렸다. 카드가 적은 백로그 열은 넘치지 않아 멀쩡했다.
+- 수정: 열의 자식에 `flex: none`(Board.svelte). debug 빌드 다시 exit 0, 앱 재시작.
+- 재검증: UAT (a)~(f) 사람 판정 다시 대기.

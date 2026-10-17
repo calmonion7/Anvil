@@ -1,3 +1,4 @@
+<!-- repaired-by: fg-loop -->
 <!-- forge-slug: anvil-monitor-1of3 -->
 <!-- task: 1 -->
 <!-- part: 1/3 -->

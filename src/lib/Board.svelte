@@ -224,6 +224,8 @@
 
   .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .col { min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-bottom: 24px; }
+  /* 열은 스크롤 컨테이너 — 카드가 넘쳐도 줄어들지 않게(min-height가 flex 기본 최소 높이를 덮어써 제목이 잘리던 문제) */
+  .col > * { flex: none; }
   .ch { display: flex; align-items: baseline; gap: 8px; padding: 0 4px 4px; position: sticky; top: 0; background: var(--plane); z-index: 1; }
   .ct { font-size: 11px; color: var(--muted); }
   .item { background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer; min-height: 44px; }
