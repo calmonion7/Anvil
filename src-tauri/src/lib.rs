@@ -194,6 +194,11 @@ fn term_resize(state: State<AppState>, id: u32, cols: u16, rows: u16) -> Result<
 fn term_close(state: State<AppState>, id: u32) {
     state.terms.close(id);
 }
+
+#[tauri::command]
+fn notify(body: String) {
+    session::notify(&body);
+}
 /// 보드 카드가 여는 문서. 등록한 프로젝트의 `.forge/` 안 파일만 읽는다.
 #[tauri::command]
 fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<String, String> {
@@ -214,7 +219,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -246,7 +250,8 @@ pub fn run() {
             term_open,
             term_write,
             term_resize,
-            term_close
+            term_close,
+            notify
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

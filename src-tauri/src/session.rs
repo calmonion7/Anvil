@@ -131,6 +131,15 @@ impl Files {
     }
 }
 
+/// macOS 알림. tauri 알림 플러그인은 macOS 27에서 무시되는 NSUserNotificationCenter를 써서,
+/// 앱이 꺼져 있을 때 훅이 쓰는 것과 같은 `osascript display notification`으로 보낸다.
+pub fn notify(body: &str) {
+    let body: String = body.chars().filter(|c| *c != '"' && *c != '\\').collect();
+    let _ = Command::new("osascript")
+        .args(["-e", &format!("display notification \"{body}\" with title \"Anvil\"")])
+        .spawn();
+}
+
 // ---------- 세션 ----------
 
 /// `anvil-<프로젝트키>-<plan|run>`. 키는 폴더 이름 + 경로 해시 6자리(같은 이름 폴더 구분).

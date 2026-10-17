@@ -2,7 +2,6 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
-  import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
   import { marked } from "marked";
   import { onMount } from "svelte";
   import Board from "$lib/Board.svelte";
@@ -71,13 +70,7 @@
     }
   }
 
-  async function notify(body: string) {
-    try {
-      let ok = await isPermissionGranted();
-      if (!ok) ok = (await requestPermission()) === "granted";
-      if (ok) sendNotification({ title: "Anvil", body });
-    } catch {}
-  }
+  const notify = (body: string) => invoke("notify", { body });
 
   /** 입력 대기로 바뀐 세션을 알린다. 지금 보고 있는 프로젝트의 세션은 알리지 않는다. */
   function onSessions(next: Record<string, SessionState>) {

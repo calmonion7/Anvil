@@ -59,3 +59,9 @@
 - r4 결과(사람): 첫 글자만 이상. 원인: WebKit은 IME 키의 keydown(229)을 input 뒤에 보낸다(r3 로그에서도 늘 input → keydown 순). r4의 "직전 키가 229일 때만 처리" 조건이 일반 키(띄어쓰기·Enter) 다음 첫 음절을 놓쳐, 그 음절은 xterm이 보낸 첫 자모만 남고 바꿔치기가 무시됐다.
 - 수정: 키 순서에 기대지 않는다. 한글만 든 `insertText`는 늘 직접 처리하고, xterm이 따로 보내는 한글은 `paste` 이벤트 처리 중이 아닐 때만 버린다(한글 붙여넣기 보존). 일반 키(keyCode≠229)가 오면 조합 끝.
 - debug 빌드 exit 0, 앱 재시작.
+
+## 수리 r6 (재계획 6/6)
+- r5 결과(사람): (a) 한글 입력 통과. (b) 알림 — 처음에 허용 요청만 뜨고 그 뒤로 알림이 오지 않음 → `verified: failed`.
+- 확인: 훅 상태 전환은 정상(FitCheck 세션 23:22:19 `waiting`). tauri-plugin-notification 2.7 → notify-rust → mac-notification-sys 0.6.15가 폐기된 `NSUserNotificationCenter`를 쓴다. macOS 27.0.1에서 조용히 무시되는 것으로 판단.
+- 수정: 알림 플러그인(Cargo·npm·capability)을 걷어 내고, 앱이 켜져 있을 때도 훅과 같은 `osascript display notification`으로 보낸다(`notify` 명령).
+- debug 빌드 exit 0, 테스트 22 통과, 앱 재시작, osascript 시험 알림 1건 전송(exit 0 — 표시 여부는 사람 확인).
