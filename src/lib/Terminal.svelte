@@ -25,6 +25,12 @@
       scrollback: 0, // 스크롤백은 tmux(history-limit 50000)가 맡는다
       theme: { background: "#111110", foreground: "#e6e5e0", cursor: "#e6e5e0", selectionBackground: "#3987e566" },
     });
+    // WebKit은 한글 IME 조합 중에도 keydown에 자모(key: "ㅎ")를 실어 보내서, xterm이 그걸 글자 키로
+    // 보내면 「ㅎ ㅇ」처럼 떨어져 들어간다. 한글 키의 keydown만 xterm 처리에서 빼고, 완성된 글자는
+    // IME 조합 이벤트 경로로 보낸다. (229·조합 끝내는 키는 xterm의 조합 처리가 그대로 맡는다.)
+    term.attachCustomKeyEventHandler(
+      (ev) => !(ev.type === "keydown" && /[ᄀ-ᇿ㄰-㆏가-힯]/.test(ev.key)),
+    );
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);

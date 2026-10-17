@@ -180,7 +180,8 @@
   function drag(kind: "height" | "split", e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
-    const panel = el.parentElement!.querySelector(".terms") as HTMLElement | null;
+    // 세로 경계는 패널(.terms) 바로 안에 있다 — 부모가 곧 패널이다.
+    const panel = kind === "split" ? el.parentElement : null;
     const move = (ev: PointerEvent) => {
       if (kind === "height") {
         panelHeight = Math.min(Math.max(window.innerHeight - ev.clientY - 24, 120), window.innerHeight - 240);
