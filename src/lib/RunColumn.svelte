@@ -45,20 +45,23 @@
       <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 채워집니다.</span>
     {:else if active}
       <span class="tt" title={active.title}><span class="num">{num(active.task)}</span>{splitTitle(active.title)[0]}</span>
-      {#if active.inLoop || active.running}
-        <span class="t3">{[active.inLoop && "루프 소속", active.running && "실행 중"].filter(Boolean).join(" · ")}</span>
-      {/if}
-      <span class="steps">
-        {#each steps as s, i (s.stage)}
-          {#if i > 0}<span class="bar"></span>{/if}
-          <span class="step {stepClass(s.stage)}" title={s.label}>
-            <span class="n">{stepClass(s.stage) === "done" ? "✓" : i + 1}</span>{s.label}
-          </span>
-        {/each}
-      </span>
       {#each active.docs as d (d.path)}
         <button class="btn sm" onclick={() => onOpen(d.path, `${d.label} · ${num(active.task)}`)}>{d.label}</button>
       {/each}
+      <!-- 둘째 줄: 단계와 루프 소속·실행 중 -->
+      <div class="line2">
+        <span class="steps">
+          {#each steps as s, i (s.stage)}
+            {#if i > 0}<span class="bar"></span>{/if}
+            <span class="step {stepClass(s.stage)}" title={s.label}>
+              <span class="n">{stepClass(s.stage) === "done" ? "✓" : i + 1}</span>{s.label}
+            </span>
+          {/each}
+        </span>
+        {#if active.inLoop || active.running}
+          <span class="t3">{[active.inLoop && "루프 소속", active.running && "실행 중"].filter(Boolean).join(" · ")}</span>
+        {/if}
+      </div>
     {:else}
       <span class="ink2">진행 중인 작업 없음</span>
       <span class="awaiting">
@@ -113,10 +116,12 @@
   .kicker { letter-spacing: .04em; flex: none; }
   .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 「지금」 띠 — 번호·제목, 단계, 문서 버튼을 한 줄에. 현재 단계 클래스 `now`와 겹치지 않게 `band` */
-  .band { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  /* 「지금」 띠 — 첫째 줄 번호·제목·문서 버튼, 둘째 줄 단계(2026-10-18 사람 결정으로 두 줄).
+     현재 단계 클래스 `now`와 겹치지 않게 `band` */
+  .band { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
   /* 단계 묶음은 폭을 내용에서 잰다 — WebKit이 그 계산에서 flex gap·flex-basis를 빼먹어 뒤 버튼이 '봉인'을 덮었다.
      간격은 margin, 연결선 폭은 width로 준다. */
+  .line2 { flex: 0 0 100%; display: flex; align-items: center; gap: 12px; padding-bottom: 2px; }
   .steps { flex: none; display: flex; align-items: center; }
   .steps > * + * { margin-left: 4px; }
   .step { display: flex; align-items: center; font-size: 11px; color: var(--muted); white-space: nowrap; }

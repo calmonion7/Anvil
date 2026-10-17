@@ -4,7 +4,7 @@ replan-round: 2
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T22:31:16Z
-wall: unverifiable-uat (C3 — #4 기계 DoD 1~6a 통과, UAT (a)(b)(c)(f)(g) 통과. 수리 r1(클래스 충돌)·r2(단계 묶음 폭 — '봉인' 덮임) 재빌드 완료 — 앱 재시작 뒤 (d)·(e) 사람 판정 대기)
+wall: unverifiable-uat (C3 — #4 기계 DoD 1~6a 통과, UAT (a)(b)(c)(f)(g) 통과. 수리 r1(클래스 충돌)·r2(단계 묶음 폭 + 사람 결정으로 「지금」 띠 두 줄) 재빌드 완료 — 앱 재시작 뒤 (d)·(e) 사람 판정 대기)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0, `test result: ok. N passed` 합계 ≥ 23(기존 22 + 새 테스트 — 테스트를 지워 초록이 되는 허점 차단), 그리고 출력에서 `grep -c 'session_title.* ok'` ≥ 1
