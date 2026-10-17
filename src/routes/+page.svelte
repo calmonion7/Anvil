@@ -34,7 +34,8 @@
   let models = $state<Record<string, ModelInfo>>({});
   /** 계획↔실행(세로 경계) 비율 · 목록↔터미널(가로 경계)에서 목록 영역 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
-  let listRatio = $state(1 / 3);
+  // 기본 0.26 — 1/3이면 xterm 줄 높이(≈18px) 때문에 900px 창에서 터미널이 30줄에 못 미친다(2026-10-18 사람 결정).
+  let listRatio = $state(0.26);
   let rail = $state(false);
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
@@ -110,9 +111,11 @@
     } catch {}
   }
 
-  function saveLayout() {
+  /** 바꾼 값만 저장한다 — 접기만 해도 경계 위치가 굳으면 기본값이 바뀌어도 따라가지 않는다. */
+  function saveLayout(patch: { split?: number; listRatio?: number; rail?: boolean }) {
     try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify({ split, listRatio, rail }));
+      const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...v, ...patch }));
     } catch {}
   }
 
@@ -252,7 +255,7 @@
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
-      saveLayout();
+      saveLayout(kind === "list" ? { listRatio } : { split });
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -260,7 +263,7 @@
 
   function toggleRail() {
     rail = !rail;
-    saveLayout();
+    saveLayout({ rail });
   }
 </script>
 

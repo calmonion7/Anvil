@@ -4,7 +4,7 @@ replan-round: 0
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T22:31:16Z
-wall: unverifiable-uat (C3 — #4 DoD 2·3·4·5a·6·6a와 UAT (a)~(g)는 새 빌드 앱으로 세션을 열어야 잴 수 있음. 떠 있는 앱은 main 빌드(pid 49757) — 앱 교체·세션 열기·`/clear`·`/effort`·창 조작은 사람 몫. DoD 1·5 통과)
+wall: unverifiable-uat (C3 — #4 DoD 2·4 통과. 남은 DoD 3(/clear)·5a(/effort low)·6(창 900px+)·6a(레일 접기)·UAT (a)~(g)는 사람 조작·판정 필요. 2026-10-18 사람 결정: 목록 기본 0.26으로 DoD 6 유지 — 재빌드 완료, 앱 재시작 대기)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0, `test result: ok. N passed` 합계 ≥ 23(기존 22 + 새 테스트 — 테스트를 지워 초록이 되는 허점 차단), 그리고 출력에서 `grep -c 'session_title.* ok'` ≥ 1
@@ -14,7 +14,7 @@ wall: unverifiable-uat (C3 — #4 DoD 2·3·4·5a·6·6a와 UAT (a)~(g)는 새 �
 ## Check progress (updated after EVERY stop-condition run — drives the no-progress & tension walls & fg-status)
 - C1: pass · regressed: ×0 · last-evidence: "cargo test → session 3 + forge 20 = 23 passed, exit 0, session_title_follows_cxa_rule_with_anvil_prefix ... ok"
 - C2: pass · regressed: ×0 · last-evidence: "npm run check → 0 ERRORS 0 WARNINGS · tauri build --debug → exit 0 (Anvil.app 번들)"
-- C3: fail ×1 · regressed: ×0 · last-evidence: "#4 실행 완료(executed, verified: pending) — DoD 1·5 통과, 래퍼 단독 검증 통과, 앱 실측·사람 UAT 대기"
+- C3: fail ×1 · regressed: ×0 · last-evidence: "#4 verified: pending — 새 빌드 실측: DoD 2·4 통과, DoD 3·5a 사전 상태 통과(/clear·/effort 대기), DoD 6은 820px 창이라 미측정(계산상 900px·1/3이면 27~28줄 위험), 6a·UAT (a)~(g) 사람 대기"
 
 ## Authorized replan scope
 - 실패한 정지 조건 검사에 직접 연결되는 fix-forward 작업만, Anvil 레포(이 워크트리) 안에서.

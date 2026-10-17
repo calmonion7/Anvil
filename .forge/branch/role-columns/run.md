@@ -33,3 +33,11 @@
 ## UAT 진행
 - 에이전트가 확인한 것: DoD 1 ✅, DoD 5 ✅, 래퍼 단독 검증 ✅, debug 빌드 ✅.
 - 나머지(DoD 2·3·4·5a·6·6a, UAT (a)~(g))는 새 빌드 앱을 띄워 세션을 열어야 잴 수 있다. 지금 떠 있는 앱은 main 빌드(pid 49757)라, 앱 교체는 사람 몫 — 사람 판정 대기.
+- 사람이 새 빌드(pid 24716)로 BibleMap 계획·실행 세션을 엶 → 에이전트 실측:
+  - DoD 2 ✅ 계획 pane pid 24882 = `claude -n [Anvil] [BibleMap] PLAN --model opus --settings …hooks.json`, 실행 pid 25053 = `… RUN --model sonnet …`
+  - DoD 3 사전 ✅ `claude agents --json`에 `[Anvil] [BibleMap] PLAN`·`RUN` 둘 다 — `/clear` 뒤 재측정 대기
+  - DoD 4 ✅ `~/cc-all.sh --dry-run` → `[Anvil]` 0회(목록의 BibleMap 3회는 사용자의 cxa 세션 `[BibleMap] PLAN/RUN`)
+  - DoD 5a 첫 부분 ✅ `models/anvil-biblemap-641f90-plan.json` = `{"model":"Opus 5.5","effort":"high"}`(실행 = Sonnet 5.5 · low) — `/effort low` 뒤 재측정 대기
+  - DoD 6 측정 조건 아님: 창 1280×820(CoreGraphics, 제목줄 포함)에서 두 터미널 71×24. 24줄에서 역산한 xterm 셀 높이 ≈ 18px(계획이 가정한 ≈ 15px보다 큼) → 계산상 900px 창 + 목록 1/3 기본값이면 약 27~28줄로 30에 못 미칠 수 있음. 900px 이상 창에서 실측 대기
+  - DoD 6a: 레일 접기 뒤 측정 대기
+- **사람 결정(2026-10-18) — DoD 6을 지키고 '목록 약 1/3'을 굽힘**: 가로 경계 기본값 1/3 → 0.26(셀 17.4~18.1px로 계산하면, 창 900px을 제목줄 포함으로 봐도 30.2~31.4줄. 0.27은 29.7줄 가능성이 있어 0.26으로 함). 함께 고침: 경계·접힘 저장이 바꾼 값만 쓰도록(접기만 해도 목록 비율이 1/3로 굳어 새 기본값을 안 따르던 허점). check 0 ERRORS, debug 빌드 exit 0. 앱 재시작 뒤 실측 대기.
