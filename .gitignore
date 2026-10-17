@@ -1,0 +1,11 @@
+# forge — 휘발 루프 상태는 제외, 영속 문서만 추적
+.forge/*
+!.forge/CONTEXT.md
+!.forge/adr/
+!.forge/retro/
+!.forge/codebase/
+!.forge/config.json
+!.forge/branch/
+
+# OS
+.DS_Store

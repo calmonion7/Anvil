@@ -1,0 +1,229 @@
+<h2>Anvil 보드 — 다듬은 시안</h2>
+<p class="subtitle">②안(‘지금’ 카드 + 3열) + 아래 계획 | 실행 분할. BibleMap 실제 상태. 오른쪽 위 토글로 다크/라이트를 바꿔 보세요.</p>
+
+<style>
+.anv{
+  --plane:#0d0d0d; --surface:#1a1a19; --raised:#222220; --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.06);
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781; --accent:#3987e5; --accent-wash:rgba(57,135,229,.14);
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --warn-wash:rgba(250,178,25,.12);
+  --term:#111110; --term-ink:#e6e5e0;
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Apple SD Gothic Neo",system-ui,sans-serif;
+  color:var(--ink); background:var(--plane); border-radius:10px; overflow:hidden;
+  border:1px solid var(--line); box-shadow:0 12px 40px rgba(0,0,0,.35); width:100%; min-width:760px;
+}
+.anv[data-theme=light]{
+  --plane:#f9f9f7; --surface:#fcfcfb; --raised:#ffffff; --line:rgba(11,11,11,.10); --line2:rgba(11,11,11,.06);
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#6f6d68; --accent:#2a78d6; --accent-wash:rgba(42,120,214,.10);
+  --warn-wash:rgba(250,178,25,.16); --term:#1a1a19; --term-ink:#e6e5e0;
+}
+.anv *{box-sizing:border-box}
+.anv .t1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.anv .t3{font-size:11px;color:var(--muted)}
+.anv .b{font-weight:600}
+.anv .chrome{height:32px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line2);background:var(--surface)}
+.anv .tl{display:flex;gap:8px}.anv .tl i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.anv .tl i:nth-child(2){background:#febc2e}.anv .tl i:nth-child(3){background:#28c840}
+.anv .body{display:flex;height:640px}
+/* sidebar */
+.anv .side{width:208px;flex:none;background:var(--surface);border-right:1px solid var(--line2);padding:16px 8px;display:flex;flex-direction:column;gap:4px}
+.anv .side .hd{display:flex;justify-content:space-between;align-items:center;padding:0 8px 8px}
+.anv .proj{display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;cursor:default}
+.anv .proj.on{background:var(--accent-wash)}
+.anv .proj .nm{flex:1;min-width:0}
+.anv .proj .nm div:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anv .sd{display:flex;gap:4px}
+.anv .pip{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted)}
+.anv .pip.run{background:var(--accent);border-color:var(--accent)}
+.anv .pip.wait{background:var(--warn);border-color:var(--warn)}
+.anv .add{margin-top:auto;padding:8px;color:var(--muted)}
+/* main */
+.anv .main{flex:1;min-width:0;display:flex;flex-direction:column}
+.anv .board{flex:1;min-height:0;padding:16px 24px;display:flex;flex-direction:column;gap:16px;overflow:hidden}
+.anv .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.anv .chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:12px;border:1px solid var(--line);color:var(--ink2);font-size:11px;white-space:nowrap}
+.anv .chip.warn{border-color:transparent;background:var(--warn-wash);color:var(--ink)}
+.anv .sp{flex:1}
+.anv .btn{height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:var(--raised);color:var(--ink);font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.anv .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.anv .btn.sm{height:24px;padding:0 8px;font-size:11px}
+/* hero */
+.anv .hero{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:8px 16px}
+.anv .hero .ttl{min-width:0}
+.anv .hero .ttl .sub{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72ch}
+.anv .steps{grid-column:1/-1;display:flex;align-items:center;gap:4px}
+.anv .step{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+.anv .step .n{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:10px}
+.anv .step.done{color:var(--ink2)} .anv .step.done .n{background:var(--ink2);border-color:var(--ink2);color:var(--surface)}
+.anv .step.now{color:var(--ink);font-weight:600} .anv .step.now .n{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.anv .bar{flex:0 0 24px;height:1.5px;background:var(--line)}
+.anv .wall{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;border-radius:6px;background:var(--warn-wash);border-left:3px solid var(--warn)}
+.anv .cks{display:flex;gap:4px}
+.anv .ck{display:inline-flex;align-items:center;gap:2px;height:20px;padding:0 6px;border-radius:4px;font-size:11px;background:var(--line2);color:var(--ink2)}
+.anv .ck .i{font-weight:700}
+.anv .ck.ok .i{color:var(--good)} .anv .ck.ng .i{color:var(--crit)}
+/* columns */
+.anv .cols{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.anv .col{min-height:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-bottom:24px;-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 32px),transparent)}
+.anv .col .ch{display:flex;align-items:baseline;gap:8px;padding:0 4px 4px;position:sticky;top:0;background:var(--plane);z-index:1}
+.anv .col .ch .ct{font-size:11px;color:var(--muted)}
+.anv .item{background:var(--surface);border:1px solid var(--line2);border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.anv .item:hover{border-color:var(--line)}
+.anv .item .tt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.anv .item .mt{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.anv .item .acts{display:flex;gap:4px;margin-top:4px}
+.anv .num{color:var(--muted);font-variant-numeric:tabular-nums;margin-right:4px}
+.anv .pri-h{color:var(--ink);font-weight:600}
+.anv .more{padding:4px;font-size:11px;color:var(--accent)}
+/* terminals */
+.anv .terms{height:208px;flex:none;display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.anv .term{display:flex;flex-direction:column;min-width:0;background:var(--term)}
+.anv .term + .term{border-left:1px solid rgba(255,255,255,.08)}
+.anv .th{height:32px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line2);font-size:11px;color:var(--ink2)}
+.anv .tb{flex:1;padding:8px 12px;font:12px/1.5 "SF Mono",ui-monospace,Menlo,monospace;color:var(--term-ink);overflow:hidden;white-space:pre}
+.anv .tb .dim{color:#898781}.anv .tb .acc{color:#7cb3f2}.anv .tb .yl{color:#fab219}
+.anv .status{height:24px;display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11px;color:var(--ink2);background:var(--surface);border-top:1px solid var(--line2)}
+.anv .status .bell{margin-left:auto;display:flex;align-items:center;gap:4px;color:var(--ink)}
+.toggle{display:flex;gap:4px;justify-content:flex-end;margin:0 0 8px}
+.toggle button{font:12px system-ui;padding:4px 10px;border-radius:6px;border:1px solid #8886;background:transparent;color:inherit;cursor:pointer}
+/* state samples */
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+.states .anv{min-width:0;border-radius:8px;box-shadow:none}
+.states .cell{padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+.skel{height:10px;border-radius:4px;background:linear-gradient(90deg,var(--line2),var(--line),var(--line2));}
+</style>
+
+<div class="toggle">
+  <button onclick="document.querySelectorAll('.anv').forEach(function(e){e.dataset.theme='dark'})">다크</button>
+  <button onclick="document.querySelectorAll('.anv').forEach(function(e){e.dataset.theme='light'})">라이트</button>
+</div>
+
+<div class="anv" data-theme="dark">
+  <div class="chrome"><div class="tl"><i></i><i></i><i></i></div><span class="t3" style="margin:auto">Anvil</span></div>
+  <div class="body">
+    <aside class="side">
+      <div class="hd"><span class="t3 b" style="letter-spacing:.04em">프로젝트</span><span class="t3">5</span></div>
+      <div class="proj on"><div class="nm"><div class="b">BibleMap</div><div class="t3">main · 루프 정지</div></div><div class="sd"><span class="pip wait" title="계획: 입력 대기"></span><span class="pip run" title="실행: 작업 중"></span></div></div>
+      <div class="proj"><div class="nm"><div>PortfoliOn</div><div class="t3">dev · 실행 입력 대기</div></div><div class="sd"><span class="pip"></span><span class="pip wait"></span></div></div>
+      <div class="proj"><div class="nm"><div>FitCheck</div><div class="t3">dev · 백로그 0</div></div><div class="sd"><span class="pip"></span><span class="pip"></span></div></div>
+      <div class="proj"><div class="nm"><div>lab-taebro</div><div class="t3">dev · 백로그 3</div></div><div class="sd"></div></div>
+      <div class="proj"><div class="nm"><div>taebro-infra</div><div class="t3">main</div></div><div class="sd"></div></div>
+      <div class="add t3">＋ 프로젝트 추가</div>
+    </aside>
+
+    <section class="main">
+      <div class="board">
+        <div class="head">
+          <span class="t1">BibleMap</span>
+          <span class="chip">⎇ main · .forge/</span>
+          <span class="chip warn">● 계획 · 입력 대기</span>
+          <span class="chip">◐ 실행 · 작업 중</span>
+          <span class="sp"></span>
+          <button class="btn pri">다음 단계 ▸</button>
+        </div>
+
+        <div class="hero">
+          <div class="ttl">
+            <div class="t3 b" style="letter-spacing:.04em;margin-bottom:4px">지금 · 루프 소속</div>
+            <div class="t1"><span class="num">#362</span>엔게디 장면 문구 수리</div>
+            <div class="sub">굴 벽의 색 낱말로 「굴 어둠·빛」 무너짐을 고친다 — 361 판정에서 353 바탕 대조의 무너짐이 3/8이었다</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-start"><button class="btn sm">plan</button><button class="btn sm">loop</button></div>
+          <div class="steps">
+            <span class="step done"><span class="n">✓</span>계획</span><span class="bar"></span>
+            <span class="step now"><span class="n">2</span>실행·검증</span><span class="bar"></span>
+            <span class="step"><span class="n">3</span>회고</span><span class="bar"></span>
+            <span class="step"><span class="n">4</span>봉인</span>
+          </div>
+          <div class="wall">
+            <span><span class="b">⏸ 루프 정지</span> — C5 사람 판정 대기</span>
+            <span class="t3">재계획 0/3</span>
+            <span class="cks">
+              <span class="ck"><span class="i">·</span>C1</span>
+              <span class="ck ok"><span class="i">✓</span>C2</span>
+              <span class="ck ok"><span class="i">✓</span>C3</span>
+              <span class="ck ng"><span class="i">✕</span>C4</span>
+              <span class="ck ng"><span class="i">✕</span>C5</span>
+              <span class="ck"><span class="i">·</span>C6</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="cols">
+          <div class="col">
+            <div class="ch"><span class="b">백로그</span><span class="ct">4 · fg-run 순서</span></div>
+            <div class="item"><div class="tt"><span class="num">#363</span>한 장 프롬프트 512토큰 잘림 — 엔게디·골리앗 장면의 관계·빛 문장이 인코더에 들어가지 않는다</div><div class="mt"><span>보통</span><span>오늘</span></div></div>
+            <div class="item"><div class="tt"><span class="num">#354</span>로컬 영상 모델 설치·시험 — 장면 그림 한 장을 3초 영상으로</div><div class="mt"><span>보통</span></div></div>
+            <div class="item"><div class="tt"><span class="num">#355</span>인물 생애 단계 분할과 기존 값 교정</div><div class="mt"><span>낮음</span></div></div>
+          </div>
+          <div class="col">
+            <div class="ch"><span class="b">후속후보</span><span class="ct">21</span></div>
+            <div class="item"><div class="tt">골리앗 판 화풍 통일(연필 결) — 공통 화풍 앵커 또는 비늘갑 패치 레퍼런스</div><div class="mt"><span>← figure-plates-redo</span><span>9월 3일</span></div><div class="acts"><button class="btn sm">착수</button><button class="btn sm" style="color:var(--muted)">숨김</button></div></div>
+            <div class="item"><div class="tt"><code>judge_scene.py</code>가 판 단독에도 잉크를 재 주는 손잡이(<code>--plate</code>)</div><div class="mt"><span>← figure-plates-redo</span><span>9월 3일</span></div></div>
+          </div>
+          <div class="col">
+            <div class="ch"><span class="b">최근 완료</span><span class="ct">330</span></div>
+            <div class="item"><div class="tt"><span class="num">#361</span>엔게디 「무너짐」 수리 — 정본 참조 편집이 장면 옷을 지우지 않게</div><div class="mt"><span style="color:var(--good)">✓</span><span>검증</span><span>· 회고 건너뜀</span><span>· 오늘</span></div></div>
+            <div class="item"><div class="tt"><span class="num">#360</span>사울·다윗 정본 참조 편집(Lightning 4스텝)</div><div class="mt"><span style="color:var(--good)">✓</span><span>검증</span><span>· 회고 ✓</span><span>· 오늘</span></div></div>
+            <div class="more">전체 기록 보기 →</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="terms">
+        <div class="term">
+          <div class="th"><span class="pip wait"></span><span class="b" style="color:var(--ink)">계획 세션</span><span>입력 대기</span><span class="sp"></span><span>⤢</span></div>
+<div class="tb"><span class="dim">▸ fg-ask: 512토큰 잘림 · 결정 2 · 지금: 자르는 기준</span>
+어느 쪽으로 줄일까요?
+  <span class="acc">❯ 1. 관계 문장 우선 보존 (추천)</span>
+    2. 빛 문장 우선 보존
+    3. 둘 다 요약
+</div>
+        </div>
+        <div class="term">
+          <div class="th"><span class="pip run"></span><span class="b" style="color:var(--ink)">실행 세션</span><span>작업 중 · #362</span><span class="sp"></span><span>⤢</span></div>
+<div class="tb"><span class="dim">&gt; /forge:fg-run</span>
+⏺ S2 — 문구 A로 8시드 생성 <span class="yl">(5/8)</span>
+  ⎿ Bash(python gen.py --seed 202 --text A)
+⏺ 밝기 지표 계산…
+<span class="dim">  ✻ Working… (2m 14s)</span>
+</div>
+        </div>
+      </div>
+      <div class="status"><span>BibleMap · main</span><span>백로그 4 · 후속후보 21</span><span class="bell">🔔 PortfoliOn 실행 세션이 입력을 기다립니다</span></div>
+    </section>
+  </div>
+</div>
+
+<h3 style="margin-top:24px">상태별 모습 (같은 보드의 한 열 크기)</h3>
+<div class="states">
+  <div class="anv" data-theme="dark"><div class="cell"><span class="b">백로그</span><span class="t3">비어 있음</span><div style="color:var(--ink2)">대기 중인 계획이 없습니다.</div><button class="btn sm" style="align-self:flex-start">계획 세션에서 fg-ask</button></div></div>
+  <div class="anv" data-theme="dark"><div class="cell"><span class="b">불러오는 중</span><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div><div class="skel" style="width:70%"></div></div></div>
+  <div class="anv" data-theme="dark"><div class="cell" style="border-left:3px solid var(--crit)"><span class="b"><span style="color:var(--crit)">✕</span> 읽기 실패</span><div style="color:var(--ink2)">backlog/x.md 에 forge-slug 마커가 없습니다. 이 파일만 건너뛰었습니다.</div><button class="btn sm" style="align-self:flex-start">파일 열기</button></div></div>
+  <div class="anv" data-theme="dark"><div class="cell"><span class="b">forge 없음</span><div style="color:var(--ink2)">이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 보드가 채워집니다.</div><button class="btn sm" style="align-self:flex-start">계획 세션 열기</button></div></div>
+</div>
+
+<h3 style="margin-top:24px">기본 배색은?</h3>
+<div class="options">
+  <div class="option" data-choice="system" onclick="toggleSelect(this)"><div class="letter">A</div><div class="content"><h3>macOS 설정 따라가기 (추천)</h3><p>시스템이 다크면 다크, 라이트면 라이트. 터미널 칸은 두 경우 모두 어둡게 유지합니다.</p></div></div>
+  <div class="option" data-choice="dark" onclick="toggleSelect(this)"><div class="letter">B</div><div class="content"><h3>다크 고정</h3><p>IDE처럼 늘 어둡게.</p></div></div>
+  <div class="option" data-choice="light" onclick="toggleSelect(this)"><div class="letter">C</div><div class="content"><h3>라이트 고정</h3><p>늘 밝게(터미널 칸만 어둡게).</p></div></div>
+</div>
+
+<button class="mock-button" onclick="
+  var sel = Array.from(document.querySelectorAll('.option.selected, .card.selected'))
+                 .map(function(e){ return e.dataset.choice; });
+  var key = sel.join(',') || 'none';
+  if (this.dataset.sent === key) return;   // same selection re-sent (double-click) — drop
+  this.dataset.sent = key;
+  window.brainstorm.send({type:'confirm', choice:'confirm:'+key, value:sel});
+  this.textContent='확정됨';
+">이걸로 확정</button>
+
+<h3>고칠 점</h3>
+<div class="ask-input">
+  <textarea id="note" rows="3" style="width:100%" placeholder="예: 후속후보 카드가 너무 길다 / 사이드바에 활성 작업 번호도"></textarea>
+  <button class="mock-button" onclick="
+    window.brainstorm.send({type:'text', choice:'text:polish-note',
+                            field:'polish-note', value:document.getElementById('note').value});
+    this.textContent='보냄';
+  ">보내기</button>
+</div>
