@@ -4,7 +4,7 @@ replan-round: 1
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: unverifiable-uat (C3 — #1 수리 r1 뒤 UAT (a)~(f) 재판정 대기)
+wall: none
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
@@ -12,9 +12,9 @@ wall: unverifiable-uat (C3 — #1 수리 r1 뒤 UAT (a)~(f) 재판정 대기)
 - [ ] C3. `anvil-monitor-1of3` · `2of3` · `3of3` 세 작업이 모두 forge root의 `done/*-<slug>/`에 봉인돼 있고, 각 `STATUS.md`의 `verified` 첫 낱말이 yes · skipped · n/a 중 하나 (= 각 계획의 DoD와 사람 UAT 통과. 테스트만 초록이고 화면은 안 맞는 가짜 완료를 막는 검사)
 
 ## Check progress (updated after EVERY stop-condition run — drives the no-progress & tension walls & fg-status)
-- C1: not run
-- C2: not run
-- C3: not run · tried: anvil-monitor-1of3-repair-r1 (UAT 실패 — 후속후보·최근 완료 카드 제목이 안 보임 → 열 자식 flex-shrink 제거)
+- C1: pass · regressed: ×0 · last-evidence: "cargo test → forge 19 passed (#1 봉인 뒤)"
+- C2: pass · regressed: ×0 · last-evidence: "tauri build --debug → exit 0, Anvil.app (#1 봉인 뒤)"
+- C3: fail ×1 · regressed: ×0 · last-evidence: "1of3 봉인(verified: yes) · 2of3·3of3 백로그 — 백로그 진행 중" · tried: anvil-monitor-1of3-repair-r1 (UAT 실패 — 후속후보·최근 완료 카드 제목이 안 보임 → 열 자식 flex-shrink 제거)
 
 ## Authorized replan scope
 - 실패한 정지 조건 검사에 직접 연결되는 fix-forward 작업만, Anvil 레포(이 워크트리) 안에서.
