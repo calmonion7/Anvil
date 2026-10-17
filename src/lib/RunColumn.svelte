@@ -39,7 +39,7 @@
 </script>
 
 <section class="col">
-  <div class="now">
+  <div class="band">
     <span class="t3 b kicker">지금</span>
     {#if !snap.hasForge}
       <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 채워집니다.</span>
@@ -113,8 +113,8 @@
   .kicker { letter-spacing: .04em; flex: none; }
   .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* 「지금」 띠 — 번호·제목, 단계, 문서 버튼을 한 줄에 */
-  .now { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  /* 「지금」 띠 — 번호·제목, 단계, 문서 버튼을 한 줄에. 현재 단계 클래스 `now`와 겹치지 않게 `band` */
+  .band { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
   .steps { flex: none; display: flex; align-items: center; gap: 4px; }
   .step { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
   .step .n { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 10px; }

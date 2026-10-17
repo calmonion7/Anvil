@@ -1,6 +1,7 @@
 <!-- forge-slug: role-columns-and-session-names -->
 <!-- task: 4 -->
 <!-- tdd: off -->
+<!-- repaired-by: fg-loop -->
 # 화면을 계획 열·실행 열 두 줄기로 다시 배치하고, 새 세션에 cxa식 이름·모델을 붙이고, 실제 모델·effort를 보인다
 
 ## 목표 / 하지 않을 것
