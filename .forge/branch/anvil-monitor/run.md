@@ -42,3 +42,10 @@
 - 수정 1: `attachCustomKeyEventHandler`로 한글 자모·음절 keydown만 xterm 처리에서 뺀다. 완성된 글자는 IME 조합 이벤트 경로로 들어간다. 조합 중인 키(229)나 조합을 끝내는 키까지 막으면 띄어쓰기를 놓칠 수 있어서(사용자 처리기가 조합 처리보다 먼저 불림) 한글 키로만 좁혔다.
 - 원인 2(세로 경계): 끌기 처리기가 경계의 부모(이미 패널) 안에서 패널을 다시 찾아 대상이 없었다. 부모를 그대로 패널로 쓰도록 고쳤다.
 - debug 빌드 다시 exit 0, 앱 재시작. 한글 조합은 화면·IME가 필요해 사람 재확인 대기.
+
+## 수리 r3 (fg-loop 제자리 수리 · 재계획 3/3 — 상한 안 마지막)
+- UAT (a) 결과(사람): 계획↔실행 경계 끌기는 고쳐짐. 한글은 r2 뒤에도 똑같이 자모로 떨어져 들어감 → `verified: failed`.
+- 되짚기: 한글 keydown을 막아도 결과가 같았으니 자모는 keydown이 아닌 input·조합 이벤트 경로로 xterm에 들어온다.
+- 수정(다른 방향): r2의 키 처리기를 지우고, xterm `onData`에서 한글을 걸러 낸 뒤 IME가 조합을 끝낸 글자(`compositionend`)만 직접 보낸다. 조합 없이 바로 확정된 한글(`insertText`, 조합 중 아님)도 보낸다.
+- 임시 진단: keydown·composition·input·xterm onData 순서를 앱 데이터 `ime-debug.log`에 남긴다(`ime_log` 명령). 한글 확인 뒤 지운다.
+- debug 빌드 exit 0, 앱 재시작.

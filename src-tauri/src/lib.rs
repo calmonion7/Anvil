@@ -195,6 +195,15 @@ fn term_close(state: State<AppState>, id: u32) {
     state.terms.close(id);
 }
 
+/// [임시 진단] 한글 IME 이벤트 순서 기록 — 확인 뒤 지운다.
+#[tauri::command]
+fn ime_log(app: AppHandle, line: String) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(data_dir(&app).join("ime-debug.log")) {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// 보드 카드가 여는 문서. 등록한 프로젝트의 `.forge/` 안 파일만 읽는다.
 #[tauri::command]
 fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<String, String> {
@@ -247,7 +256,8 @@ pub fn run() {
             term_open,
             term_write,
             term_resize,
-            term_close
+            term_close,
+            ime_log
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

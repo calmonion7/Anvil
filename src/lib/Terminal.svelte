@@ -25,12 +25,6 @@
       scrollback: 0, // 스크롤백은 tmux(history-limit 50000)가 맡는다
       theme: { background: "#111110", foreground: "#e6e5e0", cursor: "#e6e5e0", selectionBackground: "#3987e566" },
     });
-    // WebKit은 한글 IME 조합 중에도 keydown에 자모(key: "ㅎ")를 실어 보내서, xterm이 그걸 글자 키로
-    // 보내면 「ㅎ ㅇ」처럼 떨어져 들어간다. 한글 키의 keydown만 xterm 처리에서 빼고, 완성된 글자는
-    // IME 조합 이벤트 경로로 보낸다. (229·조합 끝내는 키는 xterm의 조합 처리가 그대로 맡는다.)
-    term.attachCustomKeyEventHandler(
-      (ev) => !(ev.type === "keydown" && /[ᄀ-ᇿ㄰-㆏가-힯]/.test(ev.key)),
-    );
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
@@ -41,7 +35,41 @@
     invoke("term_open", { id, name, cols: term.cols, rows: term.rows, onData }).catch((e) =>
       term.write(`\r\n[세션에 붙지 못했습니다: ${e}]\r\n`),
     );
-    const input = term.onData((d) => invoke("term_write", { id, data: d }));
+    const send = (d: string) => invoke("term_write", { id, data: d });
+
+    // 한글 IME: WKWebView에서 xterm.js가 조합 중인 자모를 그대로 보내 「ㅎ ㅇ」처럼 떨어져 들어간다.
+    // 한글은 xterm 경로에서 걸러 내고, IME가 조합을 끝낸 글자(compositionend)만 직접 보낸다.
+    const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]/g;
+    const ta = term.textarea!;
+    // [임시 진단] 이벤트 순서를 앱 데이터 ime-debug.log에 남긴다 — 한글 입력 확인 뒤 지운다.
+    const log = (s: string) => invoke("ime_log", { line: s });
+    const onKey = (e: KeyboardEvent) => log(`keydown key=${e.key} code=${e.keyCode} composing=${e.isComposing}`);
+    const onCompStart = (e: CompositionEvent) => log(`compositionstart data=${e.data}`);
+    const onCompUpdate = (e: CompositionEvent) => log(`compositionupdate data=${e.data}`);
+    const onCompEnd = (e: CompositionEvent) => {
+      log(`compositionend data=${e.data}`);
+      const text = (e.data ?? "").match(HANGUL)?.join("");
+      if (text) send(text);
+    };
+    const onInput = (e: Event) => {
+      const ie = e as InputEvent;
+      log(`input type=${ie.inputType} data=${ie.data} composing=${ie.isComposing}`);
+      // 조합 없이 바로 확정된 한글(드묾)은 여기서 보낸다.
+      if (ie.inputType === "insertText" && !ie.isComposing && ie.data) {
+        const text = ie.data.match(HANGUL)?.join("");
+        if (text) send(text);
+      }
+    };
+    ta.addEventListener("keydown", onKey, true);
+    ta.addEventListener("compositionstart", onCompStart, true);
+    ta.addEventListener("compositionupdate", onCompUpdate, true);
+    ta.addEventListener("compositionend", onCompEnd, true);
+    ta.addEventListener("input", onInput, true);
+    const input = term.onData((d) => {
+      log(`xterm onData ${JSON.stringify(d)}`);
+      const rest = d.replace(HANGUL, "");
+      if (rest) send(rest);
+    });
 
     const ro = new ResizeObserver(() => {
       if (!host.clientWidth || !host.clientHeight) return;
@@ -53,6 +81,11 @@
     return () => {
       ro.disconnect();
       input.dispose();
+      ta.removeEventListener("keydown", onKey, true);
+      ta.removeEventListener("compositionstart", onCompStart, true);
+      ta.removeEventListener("compositionupdate", onCompUpdate, true);
+      ta.removeEventListener("compositionend", onCompEnd, true);
+      ta.removeEventListener("input", onInput, true);
       invoke("term_close", { id });
       term.dispose();
     };
