@@ -87,16 +87,19 @@ fn snapshots(app: &AppHandle, state: &State<AppState>) -> Vec<forge::Snapshot> {
     state.projects.lock().unwrap().iter().map(|p| snapshot_of(app, p)).collect()
 }
 
-/// 훅이 상태 파일을 바꾸면 전체 세션 상태를 `sessions` 이벤트로 보낸다.
+/// 훅이 상태 파일을, 상태줄 래퍼가 모델·effort 기록을 바꾸면 `sessions`·`models` 이벤트로 보낸다.
 fn watch_sessions(app: &AppHandle) {
     let handle = app.clone();
     let debouncer = new_debouncer(Duration::from_millis(150), move |res: notify_debouncer_mini::DebounceEventResult| {
         if res.is_ok() {
-            let _ = handle.emit("sessions", session::states(&files(&handle)));
+            let f = files(&handle);
+            let _ = handle.emit("sessions", session::states(&f));
+            let _ = handle.emit("models", session::models(&f));
         }
     });
     let Ok(mut debouncer) = debouncer else { return };
     let _ = debouncer.watcher().watch(&files(app).sessions(), RecursiveMode::NonRecursive);
+    let _ = debouncer.watcher().watch(&files(app).models(), RecursiveMode::NonRecursive);
     *app.state::<AppState>().session_watcher.lock().unwrap() = Some(debouncer);
 }
 
@@ -152,6 +155,18 @@ fn session_states(app: AppHandle) -> HashMap<String, session::SessionState> {
 fn session_names(project: String) -> [String; 2] {
     let p = Path::new(&project);
     [session::session_name(p, "plan"), session::session_name(p, "run")]
+}
+
+/// 계획·실행 세션에 붙이는 claude 이름과 띄울 때 모델(`[이름, 모델]` 두 개). 이름 규칙은 `session::session_title` 한 곳.
+#[tauri::command]
+fn session_titles(project: String) -> [(String, &'static str); 2] {
+    let p = Path::new(&project);
+    [session::session_title(p, "plan"), session::session_title(p, "run")]
+}
+
+#[tauri::command]
+fn session_models(app: AppHandle) -> HashMap<String, session::ModelInfo> {
+    session::models(&files(&app))
 }
 
 #[tauri::command]
@@ -310,6 +325,8 @@ pub fn run() {
             read_doc,
             session_states,
             session_names,
+            session_titles,
+            session_models,
             session_start,
             session_kill,
             term_open,
