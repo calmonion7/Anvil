@@ -4,12 +4,15 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { marked } from "marked";
   import { onMount } from "svelte";
-  import Board from "$lib/Board.svelte";
+  import PlanColumn from "$lib/PlanColumn.svelte";
+  import RunColumn from "$lib/RunColumn.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
-  import type { Snapshot, DocTab, SessionState, Role, BoardActions } from "$lib/types";
+  import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
 
   const SELECTED_KEY = "anvil.selected";
+  /** 두 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
+  const LAYOUT_KEY = "anvil.layout";
   const ROLES: Role[] = ["plan", "run"];
 
   let projects = $state<Snapshot[]>([]);
@@ -23,10 +26,17 @@
   let docError = $state("");
   /** 프로젝트 경로 → [계획 세션 이름, 실행 세션 이름] */
   let names = $state<Record<string, [string, string]>>({});
+  /** 프로젝트 경로 → 계획·실행 세션의 [claude 이름, 띄울 때 모델] */
+  let titles = $state<Record<string, [SessionTitle, SessionTitle]>>({});
   /** tmux 세션 이름 → 상태 */
   let sessions = $state<Record<string, SessionState>>({});
-  let panelHeight = $state(260);
+  /** tmux 세션 이름 → 상태줄 래퍼가 남긴 실제 모델·effort */
+  let models = $state<Record<string, ModelInfo>>({});
+  /** 계획↔실행(세로 경계) 비율 · 목록↔터미널(가로 경계)에서 목록 영역 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
+  // 기본 0.26 — 1/3이면 xterm 줄 높이(≈18px) 때문에 900px 창에서 터미널이 30줄에 못 미친다(2026-10-18 사람 결정).
+  let listRatio = $state(0.26);
+  let rail = $state(false);
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
@@ -40,16 +50,6 @@
     const n = names[path]?.[role === "plan" ? 0 : 1];
     return n ? sessions[n] ?? null : null;
   }
-
-  let chips = $derived(
-    current
-      ? ROLES.filter((r) => sessionOf(current!.path, r)?.alive).map((r) => {
-          const s = sessionOf(current!.path, r);
-          const t = linkedTask(current!, s);
-          return { text: `${roleLabel[r]} · ${stateLabel(s)}${t ? ` · ${t}` : ""}`, pip: pipClass(s) };
-        })
-      : [],
-  );
 
   /** 대상 세션이 작업 중이면 버튼을 끄고 이유를 보인다. 입력 대기여도 대화 중간일 수 있어 채우기만 한다. */
   let runBlocked = $derived.by(() => {
@@ -111,9 +111,27 @@
     } catch {}
   }
 
+  /** 바꾼 값만 저장한다 — 접기만 해도 경계 위치가 굳으면 기본값이 바뀌어도 따라가지 않는다. */
+  function saveLayout(patch: { split?: number; listRatio?: number; rail?: boolean }) {
+    try {
+      const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...v, ...patch }));
+    } catch {}
+  }
+
+  function loadLayout() {
+    try {
+      const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+      if (typeof v.split === "number") split = v.split;
+      if (typeof v.listRatio === "number") listRatio = v.listRatio;
+      if (typeof v.rail === "boolean") rail = v.rail;
+    } catch {}
+  }
+
   async function loadNames(list: Snapshot[]) {
     for (const p of list) {
       if (!names[p.path]) names[p.path] = await invoke<[string, string]>("session_names", { project: p.path });
+      if (!titles[p.path]) titles[p.path] = await invoke<[SessionTitle, SessionTitle]>("session_titles", { project: p.path });
     }
   }
 
@@ -136,11 +154,13 @@
     try {
       selected = localStorage.getItem(SELECTED_KEY);
     } catch {}
+    loadLayout();
     invoke<Snapshot[]>("list_projects")
       .then(async (list) => {
         projects = list;
         await loadNames(list);
         sessions = await invoke<Record<string, SessionState>>("session_states");
+        models = await invoke<Record<string, ModelInfo>>("session_models");
         hiddenItems = await invoke("hidden_followups");
       })
       .catch((e) => (loadError = String(e)))
@@ -151,11 +171,16 @@
       if (currentTab?.project === e.payload.path) loadDoc(currentTab);
     });
     const unSess = listen<Record<string, SessionState>>("sessions", (e) => onSessions(e.payload));
+    const unModels = listen<Record<string, ModelInfo>>("models", (e) => (models = e.payload));
     // 훅이 못 남기는 변화(claude가 아닌 이유로 tmux 세션이 사라짐)도 따라가도록 가끔 다시 읽는다.
-    const poll = setInterval(async () => onSessions(await invoke("session_states")), 5000);
+    const poll = setInterval(async () => {
+      onSessions(await invoke("session_states"));
+      models = await invoke("session_models");
+    }, 5000);
     return () => {
       unSnap.then((f) => f());
       unSess.then((f) => f());
+      unModels.then((f) => f());
       clearInterval(poll);
     };
   });
@@ -217,40 +242,49 @@
     else if (activeTab > i) activeTab -= 1;
   }
 
-  /** 보드↔패널(가로 경계), 계획↔실행(세로 경계) 끌기 */
-  function drag(kind: "height" | "split", e: PointerEvent) {
+  /** 목록↔터미널(가로 경계)·계획↔실행(세로 경계) 끌기 — 두 경계 모두 본문 격자(.body) 기준 비율 */
+  function drag(kind: "list" | "split", e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
-    // 세로 경계는 패널(.terms) 바로 안에 있다 — 부모가 곧 패널이다.
-    const panel = kind === "split" ? el.parentElement : null;
+    const body = el.parentElement!;
     const move = (ev: PointerEvent) => {
-      if (kind === "height") {
-        panelHeight = Math.min(Math.max(window.innerHeight - ev.clientY - 24, 120), window.innerHeight - 240);
-      } else if (panel) {
-        const r = panel.getBoundingClientRect();
-        split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
-      }
+      const r = body.getBoundingClientRect();
+      if (kind === "list") listRatio = Math.min(Math.max((ev.clientY - r.top) / r.height, 0.15), 0.8);
+      else split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      saveLayout(kind === "list" ? { listRatio } : { split });
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
   }
+
+  function toggleRail() {
+    rail = !rail;
+    saveLayout({ rail });
+  }
 </script>
 
 <div class="app">
-  <aside class="side">
-    <div class="hd"><span class="t3 b caps">프로젝트</span><span class="t3">{projects.length}</span></div>
+  <aside class="side" class:rail>
+    <div class="hd">
+      {#if !rail}<span class="t3 b caps">프로젝트</span><span class="t3">{projects.length}</span>{/if}
+      <button class="fold" onclick={toggleRail} aria-label={rail ? "프로젝트 목록 펼치기" : "프로젝트 목록 접기"} title={rail ? "펼치기" : "접기"}>{rail ? "»" : "«"}</button>
+    </div>
     {#if loading}
       <div class="skels"><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div><div class="skel" style="width:70%"></div></div>
     {/if}
     {#each projects as p (p.path)}
       <div class="proj" class:on={current?.path === p.path}>
-        <button class="pick" onclick={() => selectProject(p.path)} title={p.path}>
-          <div class:b={current?.path === p.path} class="nm">{p.name}</div>
-          <div class="t3 nm">{p.root.branch ? `${p.root.branch} · ` : ""}{p.headline}</div>
+        <button class="pick" onclick={() => selectProject(p.path)} title={rail ? p.name : p.path} aria-label={rail ? p.name : undefined}>
+          {#if rail}
+            <span class:b={current?.path === p.path}>{[...p.name].slice(0, 2).join("")}</span>
+          {:else}
+            <div class:b={current?.path === p.path} class="nm">{p.name}</div>
+            <div class="t3 nm">{p.root.branch ? `${p.root.branch} · ` : ""}{p.headline}</div>
+          {/if}
         </button>
         <span class="sd">
           {#each ROLES as r (r)}
@@ -258,75 +292,102 @@
             {#if s?.alive}<span class="pip {pipClass(s)}" title="{roleLabel[r]}: {stateLabel(s)}"></span>{/if}
           {/each}
         </span>
-        <button class="x" title="등록 해제(폴더는 그대로)" aria-label="{p.name} 등록 해제" onclick={() => removeProject(p.path)}>×</button>
+        {#if !rail}
+          <button class="x" title="등록 해제(폴더는 그대로)" aria-label="{p.name} 등록 해제" onclick={() => removeProject(p.path)}>×</button>
+        {/if}
       </div>
     {/each}
-    <button class="add t3" onclick={addProject}>＋ 프로젝트 추가</button>
+    {#if rail}
+      <button class="add icon t3" onclick={addProject} aria-label="프로젝트 추가" title="프로젝트 추가">＋</button>
+    {:else}
+      <button class="add t3" onclick={addProject}>＋ 프로젝트 추가</button>
+    {/if}
   </aside>
 
   <section class="main">
-    {#if tabs.length}
-      <nav class="tabs">
-        <button class="tab" class:on={activeTab === null} onclick={() => showTab(null)}>보드</button>
-        {#each tabs as t, i (t.project + t.rel)}
-          <span class="tab" class:on={activeTab === i}>
-            <button class="tl" onclick={() => showTab(i)} title={t.rel}>{t.label}</button>
-            <button class="x" aria-label="탭 닫기" onclick={() => closeTab(i)}>×</button>
-          </span>
-        {/each}
-      </nav>
-    {/if}
-
-    <div class="content">
-      {#if currentTab}
-        <article class="doc">
-          <div class="t3">{currentTab.rel}</div>
-          {#if docError}
-            <div class="error"><span class="b">✕ 읽기 실패</span> — {docError}</div>
-          {:else}
-            <div class="md">{@html docHtml}</div>
-          {/if}
-        </article>
-      {:else if loading}
-        <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
-      {:else if loadError}
-        <div class="center"><div class="error"><span class="b">✕ 불러오기 실패</span> — {loadError}</div></div>
-      {:else if current}
-        {#if fillError}
-          <div class="fillerr"><span class="b">✕ 명령을 채우지 못했습니다</span> — {fillError}<button class="btn sm" onclick={() => (fillError = "")}>닫기</button></div>
+    {#if loading}
+      <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
+    {:else if loadError}
+      <div class="center"><div class="error"><span class="b">✕ 불러오기 실패</span> — {loadError}</div></div>
+    {:else if current}
+      <header class="head">
+        <span class="t1">{current.name}</span>
+        <span class="chip">⎇ {current.root.branch ?? "브랜치 없음"} · {current.root.rel}/</span>
+        {#if current.root.warning}<span class="chip warn">{current.root.warning}</span>{/if}
+        <span class="sp"></span>
+        {#if current.hasForge}
+          {#if runBlocked}<span class="t3">{runBlocked}</span>{/if}
+          <button class="btn pri" disabled={!!runBlocked} title="실행 세션 입력창에 /forge:fg-next를 채웁니다(Enter는 직접)" onclick={actions.next}>다음 단계 ▸</button>
         {/if}
-        {#key current.path}
-          <Board snap={current} onOpen={openDoc} {chips} {actions} {runBlocked} {planBlocked} hidden={hiddenSet} />
-        {/key}
-      {:else}
-        <div class="center">
-          <div class="welcome">
-            <span class="t1">등록한 프로젝트가 없습니다</span>
-            <div class="ink2">forge를 쓰는 프로젝트 폴더를 추가하면 그 프로젝트의 .forge 상태가 보드로 보입니다.</div>
-            <button class="btn" onclick={addProject}>＋ 프로젝트 추가</button>
-          </div>
+      </header>
+      {#each current.errors as err (err.path)}
+        <div class="band">
+          <span class="b"><span class="crit">✕</span> 읽기 실패</span>
+          <span class="ink2">{err.path} — {err.message}</span>
+          <span class="sp"></span>
+          <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>파일 열기</button>
+        </div>
+      {/each}
+      {#if fillError}
+        <div class="band">
+          <span class="b">✕ 명령을 채우지 못했습니다</span><span class="ink2">{fillError}</span>
+          <span class="sp"></span>
+          <button class="btn sm" onclick={() => (fillError = "")}>닫기</button>
         </div>
       {/if}
-    </div>
+      {#if tabs.length}
+        <nav class="tabs">
+          <button class="tab" class:on={activeTab === null} onclick={() => showTab(null)}>보드</button>
+          {#each tabs as t, i (t.project + t.rel)}
+            <span class="tab" class:on={activeTab === i}>
+              <button class="tl" onclick={() => showTab(i)} title={t.rel}>{t.label}</button>
+              <button class="x" aria-label="탭 닫기" onclick={() => closeTab(i)}>×</button>
+            </span>
+          {/each}
+        </nav>
+      {/if}
 
-    {#if current && names[current.path]}
-      <div class="hsplit" role="separator" aria-orientation="horizontal" aria-label="패널 높이 조절" onpointerdown={(e) => drag("height", e)}></div>
-      <div class="terms" style="height:{panelHeight}px; grid-template-columns:{split}fr 6px {1 - split}fr">
-        {#each ROLES as r, i (r)}
-          {#if i === 1}
-            <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={(e) => drag("split", e)}></div>
-          {/if}
-          {@const s = sessionOf(current.path, r)}
-          <SessionPane
-            project={current.path}
-            projectName={current.name}
-            role={r}
-            name={names[current.path][i]}
-            session={s}
-            task={linkedTask(current, s)}
-            focusTick={focus.name === names[current.path][i] ? focus.tick : 0}
-          />
-        {/each}
+      <!-- 본문 격자: 열 = 계획 | 세로 경계 | 실행, 줄 = 목록 | 가로 경계 | 터미널. 경계 하나가 양쪽을 함께 나눈다. -->
+      <div
+        class="body"
+        style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr); grid-template-rows: minmax(0, {listRatio}fr) 4px minmax(0, {1 - listRatio}fr)"
+      >
+        {#if currentTab}
+          <article class="doc">
+            <div class="t3">{currentTab.rel}</div>
+            {#if docError}
+              <div class="error"><span class="b">✕ 읽기 실패</span> — {docError}</div>
+            {:else}
+              <div class="md">{@html docHtml}</div>
+            {/if}
+          </article>
+        {:else}
+          {#key current.path}
+            <div class="cell top-plan"><PlanColumn snap={current} onOpen={openDoc} {actions} {planBlocked} hidden={hiddenSet} /></div>
+            <div class="cell top-run"><RunColumn snap={current} onOpen={openDoc} {actions} {runBlocked} /></div>
+          {/key}
+        {/if}
+        <div class="hsplit" role="separator" aria-orientation="horizontal" aria-label="목록·터미널 높이 조절" onpointerdown={(e) => drag("list", e)}></div>
+        <div class="vsplit" class:low={!!currentTab} role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={(e) => drag("split", e)}></div>
+        {#if names[current.path]}
+          {#each ROLES as r, i (r)}
+            {@const s = sessionOf(current.path, r)}
+            {@const n = names[current.path][i]}
+            <div class="cell term-{r}">
+              <SessionPane
+                project={current.path}
+                projectName={current.name}
+                role={r}
+                name={n}
+                session={s}
+                task={linkedTask(current, s)}
+                title={titles[current.path]?.[i] ?? null}
+                live={models[n] ?? null}
+                focusTick={focus.name === n ? focus.tick : 0}
+              />
+            </div>
+          {/each}
+        {/if}
       </div>
       <footer class="status">
         <span>{current.name}{current.root.branch ? ` · ${current.root.branch}` : ""}</span>
@@ -335,6 +396,14 @@
           <span class="bell">🔔 {waitingElsewhere[0]}이 입력을 기다립니다{waitingElsewhere.length > 1 ? ` 외 ${waitingElsewhere.length - 1}` : ""}</span>
         {/if}
       </footer>
+    {:else}
+      <div class="center">
+        <div class="welcome">
+          <span class="t1">등록한 프로젝트가 없습니다</span>
+          <div class="ink2">forge를 쓰는 프로젝트 폴더를 추가하면 그 프로젝트의 .forge 상태가 보드로 보입니다.</div>
+          <button class="btn" onclick={addProject}>＋ 프로젝트 추가</button>
+        </div>
+      </div>
     {/if}
   </section>
 </div>
@@ -342,28 +411,53 @@
 <style>
   .app { display: flex; height: 100vh; min-width: 960px; }
   .side { width: 208px; flex: none; background: var(--surface); border-right: 1px solid var(--line2); padding: 16px 8px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
-  .hd { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 8px; }
+  .side.rail { width: 48px; padding: 8px 4px; }
+  .hd { display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 0 0 8px 8px; }
+  .rail .hd { padding: 0 0 4px; justify-content: center; }
   .caps { letter-spacing: .04em; }
+  .fold { width: 32px; height: 32px; margin-left: auto; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; flex: none; }
+  .rail .fold { margin: 0; width: 40px; }
+  .fold:hover { background: var(--line2); color: var(--ink); }
+  .fold:focus-visible, .pick:focus-visible, .add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .proj { display: flex; align-items: center; border-radius: 6px; }
   .proj.on { background: var(--accent-wash); }
   .pick { flex: 1; min-width: 0; padding: 8px; background: none; border: 0; text-align: left; cursor: pointer; min-height: 44px; }
+  /* 좁은 레일: 앞 두 글자 + 상태 점, 높이 44px */
+  .rail .proj { flex-direction: column; justify-content: center; gap: 2px; height: 44px; flex: none; }
+  .rail .pick { flex: none; width: 100%; min-height: 0; padding: 0; text-align: center; }
+  .rail .sd { justify-content: center; min-height: 8px; }
   .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sd { display: flex; gap: 4px; }
   .x { width: 24px; height: 24px; border: 0; background: none; color: var(--muted); border-radius: 4px; cursor: pointer; opacity: 0; flex: none; }
   .proj:hover .x, .proj:focus-within .x, .tab .x { opacity: 1; }
   .x:hover { background: var(--line2); color: var(--ink); }
   .add { margin-top: auto; padding: 8px; background: none; border: 0; text-align: left; cursor: pointer; min-height: 44px; }
+  .add.icon { text-align: center; font-size: 15px; }
   .add:hover { color: var(--ink); }
   .skels { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
   .skels.wide { width: 360px; }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .tabs { display: flex; gap: 4px; padding: 8px 24px 0; border-bottom: 1px solid var(--line2); overflow-x: auto; flex: none; }
+  .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line); color: var(--ink2); font-size: 11px; white-space: nowrap; }
+  .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
+  .sp { flex: 1; }
+  .crit { color: var(--crit); }
+  .band { flex: none; display: flex; align-items: center; gap: 12px; margin: 0 16px 8px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line2); border-left: 3px solid var(--crit); }
+  .tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line2); overflow-x: auto; flex: none; }
   .tab { display: inline-flex; align-items: center; height: 32px; padding: 0 8px; border: 0; border-radius: 6px 6px 0 0; background: none; color: var(--ink2); cursor: pointer; white-space: nowrap; }
   .tab.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
   .tl { background: none; border: 0; padding: 0 4px; cursor: pointer; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; color: inherit; font-weight: inherit; }
-  .doc { flex: 1; overflow-y: auto; padding: 16px 24px 48px; }
+
+  .body { flex: 1; min-height: 0; display: grid; }
+  /* 칸 내용이 넘쳐도 이웃 칸(경계·터미널 머리줄)을 덮지 않게 자른다 */
+  .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .cell > :global(*) { flex: 1; }
+  .top-plan { grid-area: 1 / 1 / 2 / 2; }
+  .top-run { grid-area: 1 / 3 / 2 / 4; }
+  .term-plan { grid-area: 3 / 1 / 4 / 2; }
+  .term-run { grid-area: 3 / 3 / 4 / 4; }
+  .doc { grid-area: 1 / 1 / 2 / 4; min-height: 0; overflow-y: auto; padding: 16px 24px 48px; }
   .md { max-width: 75ch; }
   .md :global(pre) { background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px; overflow-x: auto; }
   .md :global(table) { border-collapse: collapse; }
@@ -371,17 +465,16 @@
   .md :global(h1) { font-size: 15px; }
   .md :global(h2), .md :global(h3) { font-size: 13px; }
   .md :global(a) { color: var(--accent); }
+  .hsplit { grid-area: 2 / 1 / 3 / 4; cursor: row-resize; background: var(--line); }
+  .hsplit:hover { background: var(--accent); }
+  .vsplit { grid-area: 1 / 2 / 4 / 3; cursor: col-resize; background: var(--line2); z-index: 1; }
+  /* 문서가 위쪽 전체 폭에 열리면 세로 경계는 터미널 사이에만 남는다 */
+  .vsplit.low { grid-area: 3 / 2 / 4 / 3; background: #2a2a28; }
+  .vsplit:hover { background: var(--accent); }
   .center { flex: 1; display: grid; place-items: center; padding: 24px; }
   .welcome { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 48ch; }
   .ink2 { color: var(--ink2); }
   .error { padding: 8px 12px; border-radius: 6px; background: var(--surface); border-left: 3px solid var(--crit); }
-  .fillerr { display: flex; align-items: center; gap: 12px; margin: 8px 24px 0; padding: 8px 12px; border-radius: 6px; background: var(--surface); border-left: 3px solid var(--crit); }
-
-  .hsplit { height: 4px; flex: none; cursor: row-resize; background: var(--line); }
-  .hsplit:hover { background: var(--accent); }
-  .terms { flex: none; display: grid; min-height: 0; }
-  .vsplit { cursor: col-resize; background: #2a2a28; }
-  .vsplit:hover { background: var(--accent); }
   .status { height: 24px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 12px; font-size: 11px; color: var(--ink2); background: var(--surface); border-top: 1px solid var(--line2); }
   .bell { margin-left: auto; color: var(--ink); }
 </style>

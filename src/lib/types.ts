@@ -49,6 +49,12 @@ export interface SessionState { state: SessionStateName; sessionId: string | nul
 
 export type Role = "plan" | "run";
 
+/** 상태줄 래퍼가 남긴 세션의 실제 모델·effort(src-tauri/src/session.rs `ModelInfo`) */
+export interface ModelInfo { model: string | null; effort: string | null }
+
+/** 세션에 붙이는 claude 이름과 띄울 때 모델(`session_titles`) */
+export type SessionTitle = [name: string, model: string];
+
 /** 보드 버튼 — 세션 입력창에 forge 명령을 채우기만 하고, Enter는 사람이 누른다. */
 export interface BoardActions {
   next: () => void;

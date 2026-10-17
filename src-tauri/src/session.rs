@@ -82,6 +82,32 @@ fi
 exit 0
 "#;
 
+/// 상태줄 래퍼 — claude가 상태줄을 그릴 때 넘기는 JSON에서 모델·effort를 세션별 파일(`models/<세션 이름>.json`)에
+/// 남긴 뒤, 같은 입력으로 사용자의 원래 상태줄 명령을 실행해 출력을 그대로 내보낸다(훅 입력에는 이 값이 없다).
+const STATUSLINE_SCRIPT: &str = r#"#!/bin/bash
+dir="$(cd "$(dirname "$0")" && pwd)"; name="${ANVIL_SESSION:-}"
+input="$(cat)"
+if [ -n "$name" ] && command -v jq >/dev/null 2>&1; then
+  mkdir -p "$dir/models"
+  f="$dir/models/$name.json"
+  # effort는 { level } 객체 또는 옛 형식인 문자열(claude-hud src/effort.ts와 같은 해석)
+  printf '%s' "$input" | jq -c '{model: (.model.display_name // null),
+    effort: (if (.effort|type) == "object" then .effort.level elif (.effort|type) == "string" then .effort else null end)}' \
+    > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
+fi
+# 원래 상태줄 명령 — claude와 같은 우선순위(프로젝트 local → 프로젝트 → 사용자)
+proj="$(printf '%s' "$input" | jq -r '.workspace.project_dir // .cwd // empty' 2>/dev/null)"
+[ -n "$proj" ] || proj="$PWD"
+orig=""
+for s in "$proj/.claude/settings.local.json" "$proj/.claude/settings.json" "$HOME/.claude/settings.json"; do
+  [ -f "$s" ] || continue
+  orig="$(jq -r '.statusLine.command // empty' "$s" 2>/dev/null)"
+  [ -n "$orig" ] && break
+done
+case "$orig" in ""|*anvil-statusline.sh*) exit 0 ;; esac
+printf '%s' "$input" | bash -c "$orig"
+"#;
+
 pub struct Files {
     pub dir: PathBuf,
 }
@@ -96,16 +122,24 @@ impl Files {
     pub fn sessions(&self) -> PathBuf {
         self.dir.join("sessions")
     }
+    /// 상태줄 래퍼가 남기는 세션별 모델·effort. `states()`가 `sessions/*.json`을 모두 세션으로 읽어 폴더를 따로 둔다.
+    pub fn models(&self) -> PathBuf {
+        self.dir.join("models")
+    }
 
-    /// 앱이 시작할 때마다 tmux.conf · 훅 스크립트 · 훅 설정을 다시 쓴다(앱 업데이트 반영).
+    /// 앱이 시작할 때마다 tmux.conf · 훅 스크립트 · 상태줄 래퍼 · 훅 설정을 다시 쓴다(앱 업데이트 반영).
     pub fn install(&self) -> std::io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::create_dir_all(self.sessions())?;
+        std::fs::create_dir_all(self.models())?;
         std::fs::create_dir_all(self.dir.join("summary"))?;
         std::fs::write(self.conf(), TMUX_CONF)?;
         let script = self.dir.join("anvil-hook.sh");
         std::fs::write(&script, HOOK_SCRIPT)?;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))?;
+        let statusline = self.dir.join("anvil-statusline.sh");
+        std::fs::write(&statusline, STATUSLINE_SCRIPT)?;
+        std::fs::set_permissions(&statusline, std::fs::Permissions::from_mode(0o755))?;
         let cmd = |state: &str| serde_json::json!([{ "hooks": [{ "type": "command", "command": format!("'{}' {state}", script.display()) }] }]);
         let settings = serde_json::json!({ "hooks": {
             "SessionStart": cmd("waiting"),
@@ -114,7 +148,7 @@ impl Files {
             "Stop": cmd("waiting"),
             "Notification": cmd("waiting"),
             "SessionEnd": cmd("ended"),
-        }});
+        }, "statusLine": { "type": "command", "command": format!("'{}'", statusline.display()) } });
         std::fs::write(self.hooks(), serde_json::to_string_pretty(&settings)?)?;
         Ok(())
     }
@@ -159,6 +193,19 @@ pub fn session_name(project: &Path, role: &str) -> String {
     format!("anvil-{base}-{:06x}-{role}", h & 0xffffff)
 }
 
+/// claude 세션에 붙이는 이름과 모델 — cxa(`~/cc.sh`) 규칙에 `[Anvil]` 접두어(cxa가 자기 세션으로 보고 건드리지 않게).
+/// 폴더 이름은 대소문자를 바꾸지 않는다(cc.sh가 `basename`을 그대로 씀). 계획 = opus, 실행 = sonnet(늘 최신 별칭).
+pub fn session_title(project: &Path, role: &str) -> (String, &'static str) {
+    let folder = project.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let (mode, model) = if role == "plan" { ("PLAN", "opus") } else { ("RUN", "sonnet") };
+    (format!("[Anvil] [{folder}] {mode}"), model)
+}
+
+/// 셸 작은따옴표 인용(폴더 이름에 `'`가 있어도 깨지지 않게).
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 pub fn live_sessions(files: &Files) -> Vec<String> {
     tmux(&files.conf())
         .args(["list-sessions", "-F", "#{session_name}"])
@@ -173,11 +220,19 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
         return Ok(name);
     }
     let _ = std::fs::remove_file(files.sessions().join(format!("{name}.json")));
-    let cmd = format!("exec claude --settings '{}'", files.hooks().display());
+    let _ = std::fs::remove_file(files.models().join(format!("{name}.json")));
+    let (title, model) = session_title(project, role);
+    let cmd = format!(
+        "exec claude -n {} --model {model} --settings {}",
+        sh_quote(&title),
+        sh_quote(&files.hooks().to_string_lossy())
+    );
     let out = tmux(&files.conf())
         .args(["new-session", "-d", "-s", &name, "-x", "200", "-y", "50", "-c"])
         .arg(project)
         .args(["-e", &format!("ANVIL_SESSION={name}"), "-e", &format!("PATH={}", login_path()), "-e", &format!("LANG={}", lang())])
+        // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 이 이름을 다시 붙인다.
+        .args(["-e", &format!("CC_SESSION_NAME={title}")])
         .arg(cmd)
         .output()
         .map_err(|e| format!("tmux를 실행할 수 없습니다: {e}"))?;
@@ -244,6 +299,25 @@ pub fn states(files: &Files) -> HashMap<String, SessionState> {
     }
     for name in live {
         map.entry(name).or_insert(SessionState { state: "starting".into(), session_id: None, alive: true });
+    }
+    map
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize, Default)]
+pub struct ModelInfo {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
+/// 상태줄 래퍼가 남긴 세션별 실제 모델·effort(tmux 세션 이름 → 값).
+pub fn models(files: &Files) -> HashMap<String, ModelInfo> {
+    let mut map = HashMap::new();
+    for e in std::fs::read_dir(files.models()).into_iter().flatten().flatten() {
+        let file = e.file_name().to_string_lossy().into_owned();
+        let Some(name) = file.strip_suffix(".json") else { continue };
+        if let Some(m) = std::fs::read_to_string(e.path()).ok().and_then(|t| serde_json::from_str(&t).ok()) {
+            map.insert(name.to_string(), m);
+        }
     }
     map
 }
@@ -356,6 +430,15 @@ mod tests {
         assert!(a.starts_with("anvil-biblemap-") && a.ends_with("-plan"));
         assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
         assert_ne!(a, session_name(Path::new("/Users/y/BibleMap"), "plan"));
+    }
+
+    #[test]
+    fn session_title_follows_cxa_rule_with_anvil_prefix() {
+        let p = Path::new("/Users/x/Project/BibleMap");
+        assert_eq!(session_title(p, "plan"), ("[Anvil] [BibleMap] PLAN".to_string(), "opus"));
+        assert_eq!(session_title(p, "run"), ("[Anvil] [BibleMap] RUN".to_string(), "sonnet"));
+        assert_eq!(session_title(Path::new("/a/lab-taebro"), "plan").0, "[Anvil] [lab-taebro] PLAN");
+        assert_eq!(sh_quote("[Anvil] [it's] PLAN"), r"'[Anvil] [it'\''s] PLAN'");
     }
 
     #[test]

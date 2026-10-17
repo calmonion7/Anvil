@@ -3,7 +3,7 @@
   import { ask } from "@tauri-apps/plugin-dialog";
   import Terminal from "./Terminal.svelte";
   import { roleLabel, stateLabel, pipClass } from "./sessions";
-  import type { Role, SessionState } from "./types";
+  import type { Role, SessionState, SessionTitle, ModelInfo } from "./types";
 
   let {
     project,
@@ -12,6 +12,8 @@
     name,
     session,
     task,
+    title,
+    live = null,
     focusTick = 0,
   }: {
     project: string;
@@ -20,12 +22,20 @@
     name: string;
     session: SessionState | null;
     task: string | null;
+    /** claude 세션 이름과 띄울 때 모델(백엔드 `session_title`) */
+    title: SessionTitle | null;
+    /** 상태줄 래퍼가 남긴 실제 모델·effort — 상태줄이 처음 그려지기 전에는 없다 */
+    live?: ModelInfo | null;
     focusTick?: number;
   } = $props();
 
   let busy = $state(false);
   let error = $state("");
   let alive = $derived(!!session?.alive);
+  /** 머리줄 `[Anvil] [BibleMap] PLAN · Opus 5.5 · high` — 기록 전에는 띄울 때 모델만, effort는 숨긴다 */
+  let heading = $derived(
+    title ? [title[0], (alive && live?.model) || title[1], alive ? live?.effort : null].filter(Boolean).join(" · ") : "",
+  );
 
   async function start() {
     busy = true;
@@ -59,7 +69,8 @@
   <div class="th">
     <span class="pip {pipClass(session)}"></span>
     <span class="b label">{roleLabel[role]} 세션</span>
-    <span>{stateLabel(session)}{task ? ` · ${task}` : ""}</span>
+    <span class="st">{stateLabel(session)}{task ? ` · ${task}` : ""}</span>
+    {#if heading}<span class="nm" title={heading}>{heading}</span>{/if}
     <span class="sp"></span>
     {#if alive}
       <button class="btn sm" onclick={kill}>세션 종료</button>
@@ -80,7 +91,9 @@
 <style>
   .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #111110; }
   .th { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line2); font-size: 11px; color: var(--ink2); }
-  .label { color: var(--ink); }
+  .label { color: var(--ink); flex: none; }
+  .st { flex: none; }
+  .nm { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
   .sp { flex: 1; }
   .empty { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; padding: 16px; color: #e6e5e0; }
   .empty .t3 { color: #898781; }
