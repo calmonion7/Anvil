@@ -1,0 +1,37 @@
+/* 토큰은 docs/board-mockup.html 정본에서 그대로 가져왔다. 배색은 macOS 설정을 따른다. */
+:root {
+  --plane: #f9f9f7; --surface: #fcfcfb; --raised: #ffffff; --line: rgba(11,11,11,.10); --line2: rgba(11,11,11,.06);
+  --ink: #0b0b0b; --ink2: #52514e; --muted: #6f6d68; --accent: #2a78d6; --accent-wash: rgba(42,120,214,.10);
+  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --warn-wash: rgba(250,178,25,.16);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --plane: #0d0d0d; --surface: #1a1a19; --raised: #222220; --line: rgba(255,255,255,.10); --line2: rgba(255,255,255,.06);
+    --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --accent: #3987e5; --accent-wash: rgba(57,135,229,.14);
+    --warn-wash: rgba(250,178,25,.12);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color: var(--ink); background: var(--plane); overflow: hidden; -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+code { font: 12px "SF Mono", ui-monospace, Menlo, monospace; }
+.t1 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.t3 { font-size: 11px; color: var(--muted); }
+.b { font-weight: 600; }
+.num { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.btn {
+  height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--raised);
+  color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+}
+.btn.sm { height: 24px; padding: 0 8px; font-size: 11px; }
+.btn:focus-visible, .item:focus-visible, .proj:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
+.pip.run { background: var(--accent); border-color: var(--accent); }
+.pip.wait { background: var(--warn); border-color: var(--warn); }
+.skel { height: 10px; border-radius: 4px; background: linear-gradient(90deg, var(--line2), var(--line), var(--line2)); }
