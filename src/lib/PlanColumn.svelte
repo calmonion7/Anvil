@@ -101,14 +101,15 @@
 </section>
 
 <style>
-  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  /* 목록 영역이 낮으면 열 전체가 스크롤한다(목록은 최소 72px) */
+  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
   .ch { display: flex; align-items: center; gap: 4px; padding: 8px 16px 4px; flex: none; }
   .tb { height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--ink2); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .tb.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
   .tb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .ct { font-size: 11px; color: var(--muted); font-weight: 400; }
   .sp { flex: 1; }
-  .list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .list { flex: 1; min-height: 72px; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
   .list > * { flex: none; }
   .ink2 { color: var(--ink2); }
   .crit { color: var(--crit); }

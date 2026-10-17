@@ -450,7 +450,8 @@
   .tl { background: none; border: 0; padding: 0 4px; cursor: pointer; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; color: inherit; font-weight: inherit; }
 
   .body { flex: 1; min-height: 0; display: grid; }
-  .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  /* 칸 내용이 넘쳐도 이웃 칸(경계·터미널 머리줄)을 덮지 않게 자른다 */
+  .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .cell > :global(*) { flex: 1; }
   .top-plan { grid-area: 1 / 1 / 2 / 2; }
   .top-run { grid-area: 1 / 3 / 2 / 4; }

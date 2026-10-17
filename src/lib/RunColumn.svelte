@@ -111,7 +111,8 @@
 </section>
 
 <style>
-  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  /* 목록 영역이 띠·루프 줄보다 낮으면 열 전체가 스크롤한다(목록은 최소 72px) */
+  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
   .ink2 { color: var(--ink2); }
   .kicker { letter-spacing: .04em; flex: none; }
   .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -146,7 +147,7 @@
 
   .ch { flex: none; display: flex; align-items: baseline; gap: 8px; padding: 12px 20px 4px; }
   .ct { font-size: 11px; color: var(--muted); }
-  .list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .list { flex: 1; min-height: 72px; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
   .list > * { flex: none; }
   .item { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; }
   .item:hover { border-color: var(--line); }
