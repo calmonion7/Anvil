@@ -1,10 +1,10 @@
 # LOOP — Anvil #1~#3(보드 모니터 · tmux 세션 · 버튼)을 구현해 세 작업 모두 UAT 통과로 봉인한다
 started: 2026-10-17
-replan-round: 3
+replan-round: 4
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: unverifiable-uat (C3 — #2 수리 r3 뒤 한글 조합 재확인과 UAT (b)~(d) 사람 판정 대기)
+wall: cap-exhausted (#2 한글 IME — r3도 실패. 원인 확인됨: WKWebView는 한글에 composition 이벤트 없이 insertText+insertReplacementText만 보내고 xterm.js는 바꿔치기를 무시. 수정안 있음 — 재계획 상한 상향 결정 필요)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
@@ -15,7 +15,7 @@ wall: unverifiable-uat (C3 — #2 수리 r3 뒤 한글 조합 재확인과 UAT (
 - C1: pass · regressed: ×0 · last-evidence: "cargo test → forge 19 passed (#1 봉인 뒤)"
 - C2: pass · regressed: ×0 · last-evidence: "tauri build --debug → exit 0, Anvil.app (#1 봉인 뒤)"
 - C3: fail ×1 · regressed: ×0 · last-evidence: "1of3 봉인(verified: yes) · 2of3·3of3 백로그 — 백로그 진행 중" · tried: anvil-monitor-1of3-repair-r1 (UAT 실패 — 후속후보·최근 완료 카드 제목이 안 보임 → 열 자식 flex-shrink 제거), anvil-monitor-2of3-repair-r2 (UAT (a) 실패 — 한글 자모 분리 입력·계획↔실행 경계 안 끌림 → 한글 keydown을 xterm 처리에서 제외, 세로 경계 대상 수정), anvil-monitor-2of3-repair-r3 (UAT (a) 한글 여전히 자모 분리 → xterm onData에서 한글을 걸러 내고 compositionend의 완성 글자만 직접 전송 + 임시 이벤트 로그)
-      reflection: "r2는 한글 keydown만 막았는데 결과가 같았다 → 자모는 keydown이 아니라 input·조합 이벤트 경로로 xterm에 들어온다. 그래서 r3는 xterm 입력 처리를 믿지 않고 한글을 IME 조합 완료 이벤트에서만 보낸다. 이번에도 실패하면 ime-debug.log의 실제 이벤트 순서를 근거로 사람과 다음 길(다른 터미널 위젯·WebView 설정 등)을 정한다."
+      reflection: "r3의 compositionend는 한 번도 불리지 않았다(ime-debug.log composition 0건). WKWebView는 한글을 insertText(새 음절)·insertReplacementText(조합 중 바꿔치기)로만 보낸다. 다음 수리는 이 두 input 이벤트를 직접 해석해 새 음절은 보내고, 바꿔치기는 직전 글자 수만큼 DEL 뒤 새 글자를 보낸다(조합 중 글자도 실시간 표시)."
 
 ## Authorized replan scope
 - 실패한 정지 조건 검사에 직접 연결되는 fix-forward 작업만, Anvil 레포(이 워크트리) 안에서.
