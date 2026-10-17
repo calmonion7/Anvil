@@ -4,7 +4,7 @@ replan-round: 6
 replan-cap: 6  (2026-10-17 사람 결정: #2 한글 IME 원인 확인 뒤 상한 3→4, r4 첫 음절 실패 뒤 4→6)
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: unverifiable-uat (C3 — #3 anvil-monitor-3of3의 DoD 1·2(버튼 눌러 측정)와 UAT (a)~(c) 사람 판정 대기)
+wall: unverifiable-uat (C3 — #3 UAT (a) 작업 중 버튼 꺼짐·(b) 세션 없는 프로젝트에서 착수·(c) Enter로 진행 사람 판정 대기. DoD 1·2 통과)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)

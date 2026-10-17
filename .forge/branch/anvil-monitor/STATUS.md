@@ -2,5 +2,5 @@
 slug: anvil-monitor-3of3
 status: executed
 executed: 2026-10-17
-verified: pending (debug 빌드 exit 0 · 테스트 22 통과 · DoD 3은 기존 증거로 결정 — DoD 1·2와 UAT (a)~(c)는 사람이 버튼을 눌러야 함)
+verified: pending (DoD 1 착수 뒤 capture-pane grep -c '/forge:fg-ask' → 1, 상태 파일 waiting 유지(Enter 없음) ✅ · DoD 2 hidden-followups.json에 출처 경로·문장 기록, 재시작 뒤 숨김 유지 ✅ · DoD 3 fg-run 번호 인자는 #1 시작 때 직접 지정 동작으로 결정 — UAT (a) 작업 중 버튼 꺼짐, (b) 세션 없는 프로젝트에서 착수, (c) Enter로 진행은 사람 확인 대기)
 retro: pending
