@@ -4,7 +4,7 @@ replan-round: 2
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-17T12:20:51Z
-wall: none
+wall: unverifiable-uat (C3 — #2 수리 r2 뒤 UAT (a) 한글 조합·계획↔실행 경계 재확인과 (b)~(d) 사람 판정 대기)
 
 ## Stop-condition checks (ALL must pass)
 - [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
