@@ -37,38 +37,41 @@
     );
     const send = (d: string) => invoke("term_write", { id, data: d });
 
-    // 한글 IME: WKWebView에서 xterm.js가 조합 중인 자모를 그대로 보내 「ㅎ ㅇ」처럼 떨어져 들어간다.
-    // 한글은 xterm 경로에서 걸러 내고, IME가 조합을 끝낸 글자(compositionend)만 직접 보낸다.
-    const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]/g;
-    const ta = term.textarea!;
-    // [임시 진단] 이벤트 순서를 앱 데이터 ime-debug.log에 남긴다 — 한글 입력 확인 뒤 지운다.
-    const log = (s: string) => invoke("ime_log", { line: s });
-    const onKey = (e: KeyboardEvent) => log(`keydown key=${e.key} code=${e.keyCode} composing=${e.isComposing}`);
-    const onCompStart = (e: CompositionEvent) => log(`compositionstart data=${e.data}`);
-    const onCompUpdate = (e: CompositionEvent) => log(`compositionupdate data=${e.data}`);
-    const onCompEnd = (e: CompositionEvent) => {
-      log(`compositionend data=${e.data}`);
-      const text = (e.data ?? "").match(HANGUL)?.join("");
-      if (text) send(text);
-    };
+    // 한글 IME: WKWebView는 한글에 composition 이벤트를 보내지 않고, 입력 칸의 글자를 바꿔치기한다.
+    //   ㅎ(insertText) → 호 → 화 → 확(insertReplacementText) → 다음 음절 ㅇ(insertText) …
+    // xterm.js는 첫 insertText만 보내고 바꿔치기를 무시해 「ㅎ ㅇ」처럼 떨어져 들어간다.
+    // 그래서 이 두 input 이벤트를 직접 해석한다: 새 음절은 그대로 보내고, 바꿔치기는 직전에 보낸
+    // 글자 수만큼 DEL로 지운 뒤 새 글자를 보낸다. IME 입력 중(keyCode 229 이후)에 xterm이 따로
+    // 보내는 한글은 버린다. 붙여넣기(Cmd+V)는 229가 아니라 한글이 그대로 통과한다.
+    const HANGUL_ONLY = /^[ᄀ-ᇿ㄰-㆏가-힯]+$/;
+    /** 지금 조합 중이라 바꿔치기될 수 있는, 이미 터미널에 보낸 글자 */
+    let composing = "";
+    /** 마지막 키가 IME 키(229)였는가 */
+    let ime = false;
+    const erase = (s: string) => "\x7f".repeat([...s].length);
     const onInput = (e: Event) => {
-      const ie = e as InputEvent;
-      log(`input type=${ie.inputType} data=${ie.data} composing=${ie.isComposing}`);
-      // 조합 없이 바로 확정된 한글(드묾)은 여기서 보낸다.
-      if (ie.inputType === "insertText" && !ie.isComposing && ie.data) {
-        const text = ie.data.match(HANGUL)?.join("");
-        if (text) send(text);
+      const { inputType, data } = e as InputEvent;
+      if (inputType === "insertText" && ime && data && HANGUL_ONLY.test(data)) {
+        composing = data;
+        send(data);
+      } else if (inputType === "insertReplacementText" && composing) {
+        send(erase(composing) + (data ?? ""));
+        composing = data ?? "";
+      } else if (inputType === "deleteContentBackward" && composing) {
+        send(erase(composing));
+        composing = "";
       }
     };
-    ta.addEventListener("keydown", onKey, true);
-    ta.addEventListener("compositionstart", onCompStart, true);
-    ta.addEventListener("compositionupdate", onCompUpdate, true);
-    ta.addEventListener("compositionend", onCompEnd, true);
-    ta.addEventListener("input", onInput, true);
+    // IME가 아닌 키(띄어쓰기·Enter·방향키 등, keyCode≠229)가 오면 조합이 끝난 것이다.
+    const onKey = (e: KeyboardEvent) => {
+      ime = e.keyCode === 229;
+      if (!ime) composing = "";
+    };
+    host.addEventListener("input", onInput, true);
+    host.addEventListener("keydown", onKey, true);
     const input = term.onData((d) => {
-      log(`xterm onData ${JSON.stringify(d)}`);
-      const rest = d.replace(HANGUL, "");
-      if (rest) send(rest);
+      if (ime && HANGUL_ONLY.test(d)) return;
+      send(d);
     });
 
     const ro = new ResizeObserver(() => {
@@ -81,11 +84,8 @@
     return () => {
       ro.disconnect();
       input.dispose();
-      ta.removeEventListener("keydown", onKey, true);
-      ta.removeEventListener("compositionstart", onCompStart, true);
-      ta.removeEventListener("compositionupdate", onCompUpdate, true);
-      ta.removeEventListener("compositionend", onCompEnd, true);
-      ta.removeEventListener("input", onInput, true);
+      host.removeEventListener("input", onInput, true);
+      host.removeEventListener("keydown", onKey, true);
       invoke("term_close", { id });
       term.dispose();
     };

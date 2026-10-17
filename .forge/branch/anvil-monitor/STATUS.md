@@ -2,5 +2,5 @@
 slug: anvil-monitor-2of3
 status: executed
 executed: 2026-10-17
-verified: failed (수리 r3 뒤에도 한글 조합 실패 — 원인: WKWebView insertReplacementText를 xterm이 무시 · DoD 1 quit 뒤 anvil 세션 1 · DoD 2 waiting→working→waiting · DoD 3 Stop 훅 hookCount 2(앱+forge) · UAT (e) ✅ — UAT (a)~(d) 사람 판정 대기)
+verified: pending (수리 r4 뒤 재검증 대기 — 한글 IME · DoD 1 quit 뒤 anvil 세션 1 · DoD 2 waiting→working→waiting · DoD 3 Stop 훅 hookCount 2(앱+forge) · UAT (e) ✅ — UAT (a)~(d) 사람 판정 대기)
 retro: pending

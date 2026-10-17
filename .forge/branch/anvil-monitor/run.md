@@ -49,3 +49,8 @@
 - 수정(다른 방향): r2의 키 처리기를 지우고, xterm `onData`에서 한글을 걸러 낸 뒤 IME가 조합을 끝낸 글자(`compositionend`)만 직접 보낸다. 조합 없이 바로 확정된 한글(`insertText`, 조합 중 아님)도 보낸다.
 - 임시 진단: keydown·composition·input·xterm onData 순서를 앱 데이터 `ime-debug.log`에 남긴다(`ime_log` 명령). 한글 확인 뒤 지운다.
 - debug 빌드 exit 0, 앱 재시작.
+
+## 수리 r4 (재계획 4/4 — 사람이 상한 3→4로 올림)
+- r3 결과(사람): 여전히 자모 분리. 임시 로그(`ime-debug.log`, 사본 job tmp)로 원인 확인: WKWebView는 한글에 composition 이벤트를 **0건** 보내고, `insertText`(새 음절 첫 자모) → `insertReplacementText`(조합 중 바꿔치기: ㅎ→호→화→확) → 다음 음절 `insertText`로만 보낸다. xterm.js는 첫 insertText만 보내고 바꿔치기를 무시해 「ㅎ ㅇ」만 남았다. 조합 중 Backspace는 keyCode 229 + `insertReplacementText`로 온다.
+- 수정: 두 input 이벤트를 앱이 직접 해석한다 — 새 음절은 그대로 보내고, 바꿔치기는 직전 글자 수만큼 DEL 뒤 새 글자를 보낸다(조합 중 글자도 실시간 표시). IME 입력 중(마지막 키가 229)에 xterm이 따로 보내는 한글만 버린다 — 타이밍(마이크로태스크)에 기대지 않으려고 이렇게 정했고, 붙여넣기(Cmd+V, 229 아님)의 한글은 통과한다.
+- 임시 진단 코드(`ime_log`)와 로그 파일은 지웠다. debug 빌드 exit 0, 앱 재시작.
