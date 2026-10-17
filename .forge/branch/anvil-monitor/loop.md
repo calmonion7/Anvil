@@ -7,8 +7,8 @@ budget-spent: 0 · since: 2026-10-17T12:20:51Z
 wall: unverifiable-uat (C3 — #1 anvil-monitor-1of3의 UAT (a)~(f) 화면 판정 대기. DoD 1·2와 (g) 메모리는 통과)
 
 ## Stop-condition checks (ALL must pass)
-- [ ] C1. `PATH=/opt/homebrew/opt/rustup/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
-- [ ] C2. `PATH=/opt/homebrew/opt/rustup/bin:$PATH npm run tauri build -- --debug` → exit 0
+- [ ] C1. `env PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin cargo test --manifest-path src-tauri/Cargo.toml` → exit 0 이고 `test result: ok. N passed`에서 N ≥ 1 (테스트 0개로 초록이 되는 허점 차단)
+- [ ] C2. `env PATH=/opt/homebrew/opt/rustup/bin:/Users/calmonion/.local/state/fnm_multishells/16354_1792234843504/bin:/opt/homebrew/bin:/usr/bin:/bin npm run tauri build -- --debug` (npm 경로는 fnm 셸마다 달라질 수 있음 — `command -v npm`으로 확인) → exit 0
 - [ ] C3. `anvil-monitor-1of3` · `2of3` · `3of3` 세 작업이 모두 forge root의 `done/*-<slug>/`에 봉인돼 있고, 각 `STATUS.md`의 `verified` 첫 낱말이 yes · skipped · n/a 중 하나 (= 각 계획의 DoD와 사람 UAT 통과. 테스트만 초록이고 화면은 안 맞는 가짜 완료를 막는 검사)
 
 ## Check progress (updated after EVERY stop-condition run — drives the no-progress & tension walls & fg-status)
