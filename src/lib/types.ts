@@ -49,5 +49,13 @@ export interface SessionState { state: SessionStateName; sessionId: string | nul
 
 export type Role = "plan" | "run";
 
+/** 보드 버튼 — 세션 입력창에 forge 명령을 채우기만 하고, Enter는 사람이 누른다. */
+export interface BoardActions {
+  next: () => void;
+  run: (p: PlanCard) => void;
+  start: (f: Followup) => void;
+  setHidden: (f: Followup, hidden: boolean) => void;
+}
+
 /** 열린 문서 탭 하나 */
 export interface DocTab { project: string; rel: string; label: string }

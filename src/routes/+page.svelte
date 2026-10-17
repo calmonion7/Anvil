@@ -7,7 +7,7 @@
   import Board from "$lib/Board.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
-  import type { Snapshot, DocTab, SessionState, Role } from "$lib/types";
+  import type { Snapshot, DocTab, SessionState, Role, BoardActions } from "$lib/types";
 
   const SELECTED_KEY = "anvil.selected";
   const ROLES: Role[] = ["plan", "run"];
@@ -27,6 +27,11 @@
   let sessions = $state<Record<string, SessionState>>({});
   let panelHeight = $state(260);
   let split = $state(0.5);
+  /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
+  let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
+  let fillError = $state("");
+  /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
+  let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
   let currentTab = $derived(activeTab === null ? null : tabs[activeTab] ?? null);
@@ -45,6 +50,48 @@
         })
       : [],
   );
+
+  /** 대상 세션이 작업 중이면 버튼을 끄고 이유를 보인다. 입력 대기여도 대화 중간일 수 있어 채우기만 한다. */
+  let runBlocked = $derived.by(() => {
+    if (!current) return null;
+    const s = sessionOf(current.path, "run");
+    if (!s?.alive || s.state !== "working") return null;
+    const t = linkedTask(current, s);
+    return t ? `${t} 실행 중` : "실행 세션 작업 중";
+  });
+  let planBlocked = $derived.by(() => {
+    if (!current) return null;
+    const s = sessionOf(current.path, "plan");
+    return s?.alive && s.state === "working" ? "계획 세션 작업 중" : null;
+  });
+  let hiddenSet = $derived(
+    new Set(hiddenItems.filter((h) => h.project === current?.path).map((h) => `${h.source}\n${h.text}`)),
+  );
+
+  async function fill(role: Role, text: string) {
+    if (!current) return;
+    fillError = "";
+    try {
+      const name = await invoke<string>("session_fill", { project: current.path, role, text });
+      sessions = await invoke<Record<string, SessionState>>("session_states");
+      focus = { name, tick: focus.tick + 1 };
+    } catch (e) {
+      fillError = String(e);
+    }
+  }
+
+  const actions: BoardActions = {
+    next: () => fill("run", "/forge:fg-next"),
+    run: (p) => fill("run", p.task == null ? "/forge:fg-run" : `/forge:fg-run #${p.task}`),
+    start: (f) => fill("plan", `/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`),
+    setHidden: async (f, hidden) => {
+      if (!current) return;
+      hiddenItems = await invoke("set_followup_hidden", {
+        item: { project: current.path, source: f.sourcePath, text: f.text },
+        hidden,
+      });
+    },
+  };
 
   /** 다른 프로젝트에서 입력을 기다리는 세션(상태줄 🔔) */
   let waitingElsewhere = $derived(
@@ -94,6 +141,7 @@
         projects = list;
         await loadNames(list);
         sessions = await invoke<Record<string, SessionState>>("session_states");
+        hiddenItems = await invoke("hidden_followups");
       })
       .catch((e) => (loadError = String(e)))
       .finally(() => (loading = false));
@@ -244,7 +292,12 @@
       {:else if loadError}
         <div class="center"><div class="error"><span class="b">✕ 불러오기 실패</span> — {loadError}</div></div>
       {:else if current}
-        {#key current.path}<Board snap={current} onOpen={openDoc} {chips} />{/key}
+        {#if fillError}
+          <div class="fillerr"><span class="b">✕ 명령을 채우지 못했습니다</span> — {fillError}<button class="btn sm" onclick={() => (fillError = "")}>닫기</button></div>
+        {/if}
+        {#key current.path}
+          <Board snap={current} onOpen={openDoc} {chips} {actions} {runBlocked} {planBlocked} hidden={hiddenSet} />
+        {/key}
       {:else}
         <div class="center">
           <div class="welcome">
@@ -271,6 +324,7 @@
             name={names[current.path][i]}
             session={s}
             task={linkedTask(current, s)}
+            focusTick={focus.name === names[current.path][i] ? focus.tick : 0}
           />
         {/each}
       </div>
@@ -321,6 +375,7 @@
   .welcome { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 48ch; }
   .ink2 { color: var(--ink2); }
   .error { padding: 8px 12px; border-radius: 6px; background: var(--surface); border-left: 3px solid var(--crit); }
+  .fillerr { display: flex; align-items: center; gap: 12px; margin: 8px 24px 0; padding: 8px 12px; border-radius: 6px; background: var(--surface); border-left: 3px solid var(--crit); }
 
   .hsplit { height: 4px; flex: none; cursor: row-resize; background: var(--line); }
   .hsplit:hover { background: var(--accent); }

@@ -1,15 +1,35 @@
 <script lang="ts">
-  import type { Snapshot, Stage, CheckResult } from "./types";
+  import type { Snapshot, Stage, CheckResult, Followup, BoardActions } from "./types";
   import { dayLabel, splitTitle, priorityLabel, inlineCode, norm } from "./format";
 
   let {
     snap,
     onOpen,
     chips = [],
-  }: { snap: Snapshot; onOpen: (rel: string, label: string) => void; chips?: { text: string; pip: string }[] } = $props();
+    actions,
+    runBlocked = null,
+    planBlocked = null,
+    hidden = new Set<string>(),
+  }: {
+    snap: Snapshot;
+    onOpen: (rel: string, label: string) => void;
+    chips?: { text: string; pip: string }[];
+    actions: BoardActions;
+    /** 실행 세션이 작업 중이면 그 이유(`#N 실행 중`) — '다음 단계'·'실행'을 끈다 */
+    runBlocked?: string | null;
+    /** 계획 세션이 작업 중이면 그 이유 — '착수'를 끈다 */
+    planBlocked?: string | null;
+    /** 숨긴 후속후보 키(`출처 경로\n문장`) */
+    hidden?: Set<string>;
+  } = $props();
 
   const DONE_PAGE = 20;
   let showAllDone = $state(false);
+  let showHidden = $state(false);
+
+  const hideKey = (f: Followup) => `${f.sourcePath}\n${f.text}`;
+  let hiddenCount = $derived(snap.followups.filter((f) => hidden.has(hideKey(f))).length);
+  let followupsShown = $derived(snap.followups.filter((f) => showHidden || !hidden.has(hideKey(f))));
 
   const steps: { stage: Stage | "plan"; label: string }[] = [
     { stage: "plan", label: "계획" },
@@ -56,6 +76,10 @@
       <span class="chip" class:warn={c.pip === "wait"}><span class="pip {c.pip}"></span>{c.text}</span>
     {/each}
     <span class="sp"></span>
+    {#if snap.hasForge}
+      {#if runBlocked}<span class="t3">{runBlocked}</span>{/if}
+      <button class="btn pri" disabled={!!runBlocked} title="실행 세션 입력창에 /forge:fg-next를 채웁니다(Enter는 직접)" onclick={actions.next}>다음 단계 ▸</button>
+    {/if}
   </div>
 
   {#if !snap.hasForge}
@@ -131,14 +155,19 @@
       <section class="col">
         <div class="ch"><span class="b">백로그</span><span class="ct">{snap.backlog.length} · fg-run 순서</span></div>
         {#each snap.backlog as p (p.path)}
-          <button class="item" onclick={() => onOpen(p.path, `plan · ${num(p.task)}`)}>
-            <div class="tt"><span class="num">{num(p.task)}</span>{p.title}</div>
-            <div class="mt">
-              <span class:pri-h={p.priority === "high"}>{priorityLabel[p.priority]}</span>
-              {#if p.part}<span>part {p.part}</span>{/if}
-              {#if p.fromLoop}<span>루프 생성</span>{/if}
+          <div class="item">
+            <button class="open" onclick={() => onOpen(p.path, `plan · ${num(p.task)}`)}>
+              <div class="tt"><span class="num">{num(p.task)}</span>{p.title}</div>
+              <div class="mt">
+                <span class:pri-h={p.priority === "high"}>{priorityLabel[p.priority]}</span>
+                {#if p.part}<span>part {p.part}</span>{/if}
+                {#if p.fromLoop}<span>루프 생성</span>{/if}
+              </div>
+            </button>
+            <div class="acts">
+              <button class="btn sm" disabled={!!runBlocked} title={runBlocked ?? "실행 세션 입력창에 /forge:fg-run을 채웁니다"} onclick={() => actions.run(p)}>실행</button>
             </div>
-          </button>
+          </div>
         {:else}
           <div class="emptycell">
             <span class="t3">비어 있음</span>
@@ -148,12 +177,27 @@
       </section>
 
       <section class="col">
-        <div class="ch"><span class="b">후속후보</span><span class="ct">{snap.followups.length}</span></div>
-        {#each snap.followups as f, i (f.sourcePath + i)}
-          <button class="item" onclick={() => onOpen(f.sourcePath, f.sourceSlug)}>
-            <div class="tt">{@html inlineCode(f.text)}</div>
-            <div class="mt"><span>← {f.sourceSlug}</span>{#if f.date}<span>{dayLabel(f.date)}</span>{/if}</div>
-          </button>
+        <div class="ch">
+          <span class="b">후속후보</span><span class="ct">{snap.followups.length - hiddenCount}</span>
+          <span class="sp"></span>
+          {#if hiddenCount}
+            <button class="more" onclick={() => (showHidden = !showHidden)}>{showHidden ? "숨긴 항목 감추기" : `숨긴 항목 보기 (${hiddenCount})`}</button>
+          {/if}
+        </div>
+        {#each followupsShown as f, i (f.sourcePath + i)}
+          {@const isHidden = hidden.has(hideKey(f))}
+          <div class="item" class:dim={isHidden}>
+            <button class="open" onclick={() => onOpen(f.sourcePath, f.sourceSlug)}>
+              <div class="tt">{@html inlineCode(f.text)}</div>
+              <div class="mt"><span>← {f.sourceSlug}</span>{#if f.date}<span>{dayLabel(f.date)}</span>{/if}</div>
+            </button>
+            <div class="acts">
+              {#if !isHidden}
+                <button class="btn sm" disabled={!!planBlocked} title={planBlocked ?? "계획 세션 입력창에 /forge:fg-ask를 채웁니다"} onclick={() => actions.start(f)}>착수</button>
+              {/if}
+              <button class="btn sm quiet" onclick={() => actions.setHidden(f, !isHidden)}>{isHidden ? "되돌리기" : "숨김"}</button>
+            </div>
+          </div>
         {:else}
           <div class="emptycell">
             <span class="t3">비어 있음</span>
@@ -235,8 +279,13 @@
   .col > * { flex: none; }
   .ch { display: flex; align-items: baseline; gap: 8px; padding: 0 4px 4px; position: sticky; top: 0; background: var(--plane); z-index: 1; }
   .ct { font-size: 11px; color: var(--muted); }
-  .item { background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer; min-height: 44px; }
+  .item { background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; min-height: 44px; }
+  button.item { cursor: pointer; }
   .item:hover { border-color: var(--line); }
+  .item.dim { opacity: .6; }
+  .open { display: flex; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: inherit; }
+  .acts { display: flex; gap: 4px; margin-top: 4px; }
+  .quiet { color: var(--muted); }
   .tt { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .mt { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
   .pri-h { color: var(--ink); font-weight: 600; }

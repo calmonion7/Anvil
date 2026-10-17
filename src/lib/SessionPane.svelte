@@ -12,8 +12,16 @@
     name,
     session,
     task,
-  }: { project: string; projectName: string; role: Role; name: string; session: SessionState | null; task: string | null } =
-    $props();
+    focusTick = 0,
+  }: {
+    project: string;
+    projectName: string;
+    role: Role;
+    name: string;
+    session: SessionState | null;
+    task: string | null;
+    focusTick?: number;
+  } = $props();
 
   let busy = $state(false);
   let error = $state("");
@@ -58,7 +66,7 @@
     {/if}
   </div>
   {#if alive}
-    {#key name}<Terminal {name} />{/key}
+    {#key name}<Terminal {name} {focusTick} />{/key}
   {:else}
     <div class="empty">
       <div>{roleLabel[role]} 세션이 없습니다.</div>

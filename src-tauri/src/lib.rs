@@ -199,6 +199,71 @@ fn term_close(state: State<AppState>, id: u32) {
 fn notify(body: String) {
     session::notify(&body);
 }
+
+/// 보드 버튼: 역할에 맞는 세션 입력창에 forge 명령을 채운다(Enter 없음). 세션이 없으면 띄우고
+/// SessionStart(입력 대기)를 기다린 뒤 채운다. 채운 세션 이름을 돌려준다(화면이 그 칸에 초점을 옮김).
+#[tauri::command]
+async fn session_fill(app: AppHandle, project: String, role: String, text: String) -> Result<String, String> {
+    let project = PathBuf::from(project);
+    registered(&app.state::<AppState>(), &project)?;
+    if role != "plan" && role != "run" {
+        return Err(format!("알 수 없는 역할: {role}"));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let files = files(&app);
+        let name = session::session_name(&project, &role);
+        let alive = session::live_sessions(&files).contains(&name);
+        if !alive {
+            session::start(&files, &project, &role)?;
+            if !session::wait_ready(&files, &name, Duration::from_secs(40)) {
+                return Err("세션이 입력을 받을 준비가 되지 않았습니다(처음 여는 폴더라면 claude의 폴더 신뢰 확인을 먼저 해 주세요)".into());
+            }
+        } else if session::states(&files).get(&name).is_some_and(|s| s.state == "working") {
+            return Err("세션이 작업 중이라 채우지 않았습니다".into());
+        }
+        session::fill(&files, &name, &text)?;
+        Ok(name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ---------- 후속후보 숨김(앱 데이터 hidden-followups.json) ----------
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq)]
+struct HiddenFollowup {
+    project: String,
+    source: String,
+    text: String,
+}
+
+fn hidden_path(app: &AppHandle) -> PathBuf {
+    data_dir(app).join("hidden-followups.json")
+}
+
+fn load_hidden(app: &AppHandle) -> Vec<HiddenFollowup> {
+    std::fs::read_to_string(hidden_path(app))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn hidden_followups(app: AppHandle) -> Vec<HiddenFollowup> {
+    load_hidden(&app)
+}
+
+#[tauri::command]
+fn set_followup_hidden(app: AppHandle, item: HiddenFollowup, hidden: bool) -> Result<Vec<HiddenFollowup>, String> {
+    let mut list = load_hidden(&app);
+    list.retain(|h| *h != item);
+    if hidden {
+        list.push(item);
+    }
+    let json = serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?;
+    std::fs::write(hidden_path(&app), json).map_err(|e| e.to_string())?;
+    Ok(list)
+}
 /// 보드 카드가 여는 문서. 등록한 프로젝트의 `.forge/` 안 파일만 읽는다.
 #[tauri::command]
 fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<String, String> {
@@ -251,7 +316,10 @@ pub fn run() {
             term_write,
             term_resize,
             term_close,
-            notify
+            notify,
+            session_fill,
+            hidden_followups,
+            set_followup_hidden
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

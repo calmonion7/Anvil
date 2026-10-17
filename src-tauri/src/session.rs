@@ -187,6 +187,29 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     Ok(name)
 }
 
+/// 세션 입력창에 글자만 채운다. Enter는 보내지 않는다 — 실행은 사람이 누른다.
+pub fn fill(files: &Files, name: &str, text: &str) -> Result<(), String> {
+    let out = tmux(&files.conf()).args(["send-keys", "-t", name, "-l", text]).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
+/// 새로 띄운 세션이 SessionStart 훅으로 입력 대기를 알릴 때까지 기다린다.
+pub fn wait_ready(files: &Files, name: &str, timeout: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if states(files).get(name).is_some_and(|s| s.alive && s.state == "waiting") {
+            // 훅이 claude 화면이 입력을 받을 준비를 마치기 조금 전에 불릴 수 있다.
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    false
+}
+
 pub fn kill(files: &Files, name: &str) -> Result<(), String> {
     let out = tmux(&files.conf()).args(["kill-session", "-t", name]).output().map_err(|e| e.to_string())?;
     if !out.status.success() {

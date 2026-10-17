@@ -10,9 +10,15 @@
   import { onMount } from "svelte";
 
   /** 살아 있는 tmux 세션 이름 — 이 컴포넌트는 pty 안에서 그 세션에 붙기만 한다. */
-  let { name }: { name: string } = $props();
+  /** focusTick이 바뀔 때마다 이 터미널에 초점을 준다(보드 버튼이 명령을 채운 뒤). */
+  let { name, focusTick = 0 }: { name: string; focusTick?: number } = $props();
 
   let host: HTMLDivElement;
+  let termRef: Terminal | null = null;
+
+  $effect(() => {
+    if (focusTick) termRef?.focus();
+  });
 
   onMount(() => {
     const id = ++counter;
@@ -28,6 +34,8 @@
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
+    termRef = term;
+    if (focusTick) term.focus();
     fit.fit();
 
     const onData = new Channel<string>();
