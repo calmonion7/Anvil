@@ -12,6 +12,7 @@ wall: unverifiable-uat (C6)
 - [x] C3. `grep -lq 'role="dialog"' src/lib/*.svelte src/routes/+page.svelte` exit 0
 - [x] C4. `npm run check` → 0 ERRORS (회귀 방지)
 - [x] C5. `npm run tauri build -- --debug` exit 0 (회귀 방지)
+- [x] C7. `npm run test:e2e` exit 0 — UAT (b)~(e) 자동 검사(사용자 결정 2026-10-18로 추가)
 - [ ] C6. 작업 #5 봉인(done/에 존재) — UAT (a)~(e) 사람 판정 포함
 
 ## Check progress
@@ -20,10 +21,12 @@ wall: unverifiable-uat (C6)
 - C3: pass · regressed: ×0 · last-evidence: "ListPopup.svelte·+page.svelte에 role=dialog"
 - C4: pass · regressed: ×0 · last-evidence: "184 FILES 0 ERRORS 0 WARNINGS"
 - C5: pass · regressed: ×0 · last-evidence: "tauri build --debug EXIT=0"
-- C6: fail ×1 · regressed: ×0 · last-evidence: "STATUS verified: pending — UAT (a)~(e) 사람 판정 대기"
+- C7: pass · regressed: ×0 · last-evidence: "npm run test:e2e → 7 passed (UAT b·c·d·e)"
+- C6: fail ×1 · regressed: ×0 · last-evidence: "verified: pending — (b)~(e)는 C7로 자동 통과, (a) 재실행 복원만 사람 판정 대기. 종료 시 .window-state.json 저장(1280×820 논리, maximized false)은 확인"
 
 ## Authorized replan scope
 - 실패한 검사에 직접 이어지는 fix-forward 작업만
+- (2026-10-18 사용자 결정 「진행해줘」=A) #5 범위에 Playwright + IPC 모킹 화면 검사 추가 허용
 - always-halt action classes: prod data mutation/deletion · deploy/release/publish · outbound external comms · irreversible VCS/file destruction · financial/payment · secret/permission change · privacy-data exposure
 - UAT는 사람이 판정(멈추면 사용자가 판정) — 무인 봉인 금지
 
