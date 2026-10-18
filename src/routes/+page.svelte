@@ -5,7 +5,9 @@
   import { marked } from "marked";
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
+  import Shortcuts from "$lib/Shortcuts.svelte";
   import FlowBoard from "$lib/FlowBoard.svelte";
+  import FlowLinks, { type FlowPulses } from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
@@ -14,6 +16,11 @@
   const SELECTED_KEY = "anvil.selected";
   /** 세로 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
   const LAYOUT_KEY = "anvil.layout";
+  /** 열 머리판 단축 버튼(명령어 목록) — 앱 전체 설정 */
+  const SHORTCUT_KEY = "anvil.shortcuts";
+  const DEFAULT_SHORTCUTS: Record<Role, string[]> = { plan: ["/forge:fg-ask"], run: ["/forge:fg-next"] };
+  /** Claude 내장 명령 — 파일이 없어 백엔드가 못 읽으니 자동완성 후보에 덧붙인다 */
+  const BUILTIN_COMMANDS = ["/clear", "/compact", "/context", "/model", "/resume"];
   const ROLES: Role[] = ["plan", "run"];
 
   let projects = $state<Snapshot[]>([]);
@@ -35,18 +42,65 @@
   let models = $state<Record<string, ModelInfo>>({});
   /** 계획↔실행(세로 경계) 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
+  /** 접기 전 비율 — 레일을 누르면 여기로 돌아간다 */
+  let unfoldTo = $state(0.5);
+  let folded = $derived<Role | null>(split === 0 ? "plan" : split === 1 ? "run" : null);
+  function unfold() {
+    split = unfoldTo;
+    saveLayout({ split });
+  }
+  /** 머리줄 레이아웃 버튼 — 0 = 계획 접기(실행만) · 0.5 = 반반 · 1 = 실행 접기(계획만) */
+  function setLayout(v: number) {
+    if (split > 0 && split < 1) unfoldTo = split;
+    if (v === 0.5) unfoldTo = 0.5;
+    split = v;
+    saveLayout({ split, unfoldTo });
+  }
+  const LAYOUTS = [
+    { v: 0, label: "계획 접기 · 실행창만" },
+    { v: 0.5, label: "가운데 · 계획·실행 반반" },
+    { v: 1, label: "실행 접기 · 계획창만" },
+  ];
   let rail = $state(false);
+  let shortcuts = $state<Record<Role, string[]>>(loadShortcuts());
+  function loadShortcuts(): Record<Role, string[]> {
+    try {
+      const v = JSON.parse(localStorage.getItem(SHORTCUT_KEY) ?? "null");
+      if (Array.isArray(v?.plan) && Array.isArray(v?.run)) return v;
+    } catch {}
+    return structuredClone(DEFAULT_SHORTCUTS);
+  }
+  function setShortcuts(r: Role, items: string[]) {
+    shortcuts[r] = items;
+    try {
+      localStorage.setItem(SHORTCUT_KEY, JSON.stringify(shortcuts));
+    } catch {}
+  }
   /** 건수 칩이 연 목록 팝업 */
   let listOpen = $state<ListKind | null>(null);
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
+  /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
+  let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
+  let mainEl = $state<HTMLElement>();
   let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
   /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
+  /** 프로젝트 경로 → 설치된 슬래시 명령. 프로젝트마다 처음 한 번만 읽는다. */
+  let slashCache = $state<Record<string, string[]>>({});
+  $effect(() => {
+    const p = current?.path;
+    if (!p || p in slashCache) return;
+    slashCache[p] = [];
+    invoke<string[]>("slash_commands", { project: p })
+      .then((list) => (slashCache[p] = list))
+      .catch(() => {});
+  });
+  let commands = $derived([...BUILTIN_COMMANDS, ...(current ? slashCache[current.path] ?? [] : [])]);
   let currentTab = $derived(activeTab === null ? null : tabs[activeTab] ?? null);
 
   function sessionOf(path: string, role: Role): SessionState | null {
@@ -88,7 +142,6 @@
   }
 
   const actions: BoardActions = {
-    next: () => fill("run", "/forge:fg-next"),
     run: (p) => fill("run", p.task == null ? "/forge:fg-run" : `/forge:fg-run #${p.task}`),
     start: (f) => fill("plan", `/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`),
     setHidden: async (f, hidden) => {
@@ -119,7 +172,7 @@
   }
 
   /** 바꾼 값만 저장한다 — 접기만 해도 경계 위치가 굳으면 기본값이 바뀌어도 따라가지 않는다. */
-  function saveLayout(patch: { split?: number; rail?: boolean }) {
+  function saveLayout(patch: { split?: number; unfoldTo?: number; rail?: boolean }) {
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...v, ...patch }));
@@ -130,6 +183,7 @@
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       if (typeof v.split === "number") split = v.split;
+      if (typeof v.unfoldTo === "number") unfoldTo = v.unfoldTo;
       if (typeof v.rail === "boolean") rail = v.rail;
     } catch {}
   }
@@ -250,18 +304,23 @@
   }
 
   /** 계획↔실행(세로 경계) 끌기 — 본문 격자(.body) 기준 비율 */
+  /** 경계를 가장자리 이만큼 안에서 놓으면 그쪽 열을 레일로 접는다(0 = 계획 접힘 → 실행만, 1 = 실행 접힘 → 계획만) */
+  const FOLD_SNAP = 0.12;
+
   function drag(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const body = el.parentElement!;
+    if (split > 0 && split < 1) unfoldTo = split;
     const move = (ev: PointerEvent) => {
       const r = body.getBoundingClientRect();
-      split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
+      const x = (ev.clientX - r.left) / r.width;
+      split = x < FOLD_SNAP ? 0 : x > 1 - FOLD_SNAP ? 1 : Math.min(Math.max(x, 0.2), 0.8);
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
-      saveLayout({ split });
+      saveLayout({ split, unfoldTo });
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -321,7 +380,7 @@
     {/if}
   </aside>
 
-  <section class="main">
+  <section class="main" bind:this={mainEl}>
     {#if loading}
       <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
     {:else if loadError}
@@ -332,10 +391,25 @@
         <span class="chip">⎇ {current.root.branch ?? "브랜치 없음"} · {current.root.rel}/</span>
         {#if current.root.warning}<span class="chip warn">{current.root.warning}</span>{/if}
         <span class="sp"></span>
-        {#if current.hasForge}
-          {#if runBlocked}<span class="t3">{runBlocked}</span>{/if}
-          <button class="btn pri" disabled={!!runBlocked} title="실행 세션 입력창에 /forge:fg-next를 채웁니다(Enter는 직접)" onclick={actions.next}>다음 단계 ▸</button>
-        {/if}
+        <div class="seg" role="group" aria-label="터미널 배치">
+          {#each LAYOUTS as l (l.v)}
+            <button
+              class="segb"
+              class:on={l.v === 0.5 ? folded === null : split === l.v}
+              aria-label={l.label}
+              title={l.label}
+              onclick={() => setLayout(l.v)}
+            >
+              <!-- 레이아웃 모양 그림: 접힌 쪽은 좁은 막대 -->
+              <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true">
+                <rect x=".75" y=".75" width="16.5" height="10.5" rx="2" />
+                {#if l.v === 0}<rect class="fill" x="1.5" y="1.5" width="3" height="9" rx="1" /><line x1="5.5" y1="1" x2="5.5" y2="11" />
+                {:else if l.v === 1}<rect class="fill" x="13.5" y="1.5" width="3" height="9" rx="1" /><line x1="12.5" y1="1" x2="12.5" y2="11" />
+                {:else}<line x1="9" y1="1" x2="9" y2="11" />{/if}
+              </svg>
+            </button>
+          {/each}
+        </div>
       </header>
       {#each current.errors as err (err.path)}
         <div class="band">
@@ -366,16 +440,55 @@
 
       <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
       {#key current.path}
-        <NowStrip snap={current} onOpen={openDoc} />
-        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} fill={lastFill} />
+        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} bind:out={outPulses} />
       {/key}
-      <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
+      <FlowLinks
+        root={mainEl}
+        planWorking={sessionOf(current.path, "plan")?.state === "working" && !!sessionOf(current.path, "plan")?.alive}
+        runWorking={sessionOf(current.path, "run")?.state === "working" && !!sessionOf(current.path, "run")?.alive}
+        pulses={outPulses}
+        deps={[current.path, split, rail, current.active?.task, listOpen]}
+        {folded}
+      />
+      <div class="body" style="grid-template-columns: {folded === 'plan' ? '36px 6px minmax(0, 1fr)' : folded === 'run' ? 'minmax(0, 1fr) 6px 36px' : `minmax(0, ${split}fr) 6px minmax(0, ${1 - split}fr)`}">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
         {#if names[current.path]}
           {#each ROLES as r, i (r)}
             {@const s = sessionOf(current.path, r)}
             {@const n = names[current.path][i]}
-            <div class="cell term-{r}">
+            <!-- 열 머리: 계획 = 최근 쌓은 계획, 실행 = 지금 처리 중인 작업 → 계획·실행을 나란히 본다.
+                 같은 grid 행이라 높이가 같이 맞춰져 아래 터미널 머리줄이 나란하다. -->
+            {#if folded === r}
+              <!-- 접힌 열 = 세로 레일. 흐름도의 관은 여기로 꽂히고, 누르면 펼친다(터미널은 숨기기만 해 연결 유지) -->
+              <button class="foldrail info-{r} foldrail-{r}" onclick={unfold} aria-label="{roleLabel[r]} 세션 펼치기" title="{roleLabel[r]} 세션 펼치기">
+                {#if s?.alive}<span class="pip {pipClass(s)}"></span>{/if}
+                <span class="vt">{roleLabel[r]} 세션 · {stateLabel(s)}</span>
+              </button>
+            {:else}
+            <div class="info info-{r}">
+                {#if r === "run"}
+                  {#key current.path}
+                    <NowStrip snap={current} onOpen={openDoc}>
+                      {#snippet tools()}
+                        <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} {commands} />
+                      {/snippet}
+                    </NowStrip>
+                  {/key}
+                {:else}
+                  <div class="pband">
+                    <span class="kicker">계획</span>
+                    <span class="tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
+                    <button class="btn sm" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
+                    <div class="pline2">
+                      <span class="t3">후속후보 착수는 목록의 「착수」로</span>
+                      <span class="sp"></span>
+                      <Shortcuts role="plan" items={shortcuts.plan} blocked={planBlocked} onFill={(t) => fill("plan", t)} onChange={(v) => setShortcuts("plan", v)} {commands} />
+                    </div>
+                  </div>
+                {/if}
+            </div>
+            {/if}
+            <div class="cell term-{r}" class:folded={folded === r}>
               <!-- 유입 띠: 이 터미널은 위 흐름도의 같은 색 노드·보드 버튼에서 입력을 받는다 -->
               <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title="보드 버튼이 이 세션 입력창에 명령을 채웁니다">
                 {#key lastFill.n}{#if lastFill.n && lastFill.role === r}<span class="fpulse"></span>{/if}{/key}
@@ -460,8 +573,19 @@
   .skels { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
   .skels.wide { width: 360px; }
 
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; flex-wrap: wrap; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+  .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 16px; flex-wrap: wrap; }
+  .head .t1 { font-size: 14px; }
+  .head .btn { height: 28px; }
+  /* 터미널 배치 3단 버튼 */
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .segb { width: 32px; height: 26px; display: grid; place-items: center; border: 0; background: var(--raised); color: var(--muted); cursor: pointer; }
+  .segb + .segb { border-left: 1px solid var(--line); }
+  .segb:hover { color: var(--ink); }
+  .segb.on { background: var(--accent-wash); color: var(--accent); }
+  .segb:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .segb svg { fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .segb svg .fill { fill: currentColor; stroke: none; opacity: .6; }
   .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line); color: var(--ink2); font-size: 11px; white-space: nowrap; }
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
   .sp { flex: 1; }
@@ -472,11 +596,30 @@
   .tab.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
   .tl { background: none; border: 0; padding: 0 4px; cursor: pointer; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; color: inherit; font-weight: inherit; }
 
-  .body { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); position: relative; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); position: relative; }
   /* 칸 내용이 넘쳐도 이웃 칸(경계·터미널 머리줄)을 덮지 않게 자른다 */
   .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .cell > :global(*) { flex: 1; }
-  .term-plan { grid-area: 1 / 1 / 2 / 2; }
+  .term-plan { grid-area: 2 / 1 / 3 / 2; }
+  .info { min-width: 0; display: flex; flex-direction: column; }
+  .info > :global(*) { flex: 1; }
+  .info-plan { grid-area: 1 / 1 / 2 / 2; }
+  .cell.folded { display: none; }
+  /* 접힌 열 레일 — 두 행(머리판·터미널)을 다 차지, 위쪽 역할 색 선에 관이 꽂힌다 */
+  /* contain: size — 세로 글씨 높이가 머리판 행 높이를 늘리지 않게 */
+  .foldrail { contain: size; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; border: 0; border-top: 2px solid var(--c); background: var(--surface); color: var(--ink2); cursor: pointer; }
+  .foldrail:hover { background: var(--raised); color: var(--ink); }
+  .foldrail:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .foldrail .vt { writing-mode: vertical-rl; font-size: 11px; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+  .foldrail-plan { grid-area: 1 / 1 / 3 / 2; --c: var(--warn); }
+  .foldrail-run { grid-area: 1 / 3 / 3 / 4; --c: var(--accent); }
+  .info-run { grid-area: 1 / 3 / 2 / 4; }
+  .info-run :global(.band) { flex: 1; }
+  /* 열 머리판 — 터미널에 붙어 한 덩어리. 위쪽 역할 색 선에 흐름도의 관이 꽂힌다. 실행 쪽(NowStrip .band)과 같은 꼴 */
+  .pband { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 16px 6px; background: var(--surface); border-top: 2px solid var(--warn); }
+  .pband .kicker { flex: none; height: 20px; padding: 0 8px; border-radius: 10px; display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; letter-spacing: .04em; background: var(--warn-wash); color: var(--warn); }
+  .pband .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; gap: 4px; }
   .cell > .feed { flex: none; position: relative; height: 3px; overflow: hidden; background: var(--line); }
   .feed.plan { --c: var(--warn); }
   .feed.run { --c: var(--accent); }
@@ -489,7 +632,7 @@
     .feed[data-flow="active"], .fpulse { animation: none; }
     .fpulse { display: none; }
   }
-  .term-run { grid-area: 1 / 3 / 2 / 4; }
+  .term-run { grid-area: 2 / 3 / 3 / 4; }
   .doc { position: absolute; inset: 0; z-index: 3; overflow-y: auto; padding: 8px 24px 48px; background: var(--plane); border-top: 1px solid var(--line); }
   .dh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
   .x.on { opacity: 1; width: 32px; height: 32px; }
@@ -500,7 +643,7 @@
   .md :global(h1) { font-size: 15px; }
   .md :global(h2), .md :global(h3) { font-size: 13px; }
   .md :global(a) { color: var(--accent); }
-  .vsplit { grid-area: 1 / 2 / 2 / 3; cursor: col-resize; background: #2a2a28; z-index: 1; }
+  .vsplit { grid-area: 1 / 2 / 3 / 3; cursor: col-resize; background: #2a2a28; z-index: 1; }
   .vsplit:hover { background: var(--accent); }
   .center { flex: 1; display: grid; place-items: center; padding: 24px; }
   .welcome { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 48ch; }

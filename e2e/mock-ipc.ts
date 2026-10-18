@@ -76,6 +76,8 @@ export async function mockIpc(page: Page) {
               return hidden;
             case "session_fill": return `${args.project}-${args.role}`;
             case "read_doc": return `# 문서 ${args.rel}`;
+            case "slash_commands":
+              return ["/eli5", "/forge:fg-ask", "/forge:fg-doctor", "/forge:fg-learn", "/forge:fg-next", "/forge:fg-run", "/forge:fg-status"];
             default: return null;
           }
         },

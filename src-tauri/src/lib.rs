@@ -1,5 +1,6 @@
 pub mod forge;
 pub mod session;
+pub mod slash;
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, Debouncer};
@@ -337,6 +338,13 @@ fn load_hidden(app: &AppHandle) -> Vec<HiddenFollowup> {
         .unwrap_or_default()
 }
 
+/// 단축 버튼 자동완성 — 설치된 플러그인·사용자·이 프로젝트의 슬래시 명령(프런트가 프로젝트마다 한 번 읽어 둔다)
+#[tauri::command]
+fn slash_commands(project: String) -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    slash::collect(&Path::new(&home).join(".claude"), Some(Path::new(&project)))
+}
+
 #[tauri::command]
 fn hidden_followups(app: AppHandle) -> Vec<HiddenFollowup> {
     load_hidden(&app)
@@ -469,7 +477,8 @@ pub fn run() {
             notify,
             session_fill,
             hidden_followups,
-            set_followup_hidden
+            set_followup_hidden,
+            slash_commands
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
