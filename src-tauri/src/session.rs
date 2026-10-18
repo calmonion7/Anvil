@@ -206,6 +206,12 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
+/// 부모 claude가 자식 프로세스에 심는 변수를 지우는 셸 앞머리. Anvil을 다른 claude 세션 안에서 띄우면
+/// (예: 허브 세션에서 dev 실행) tmux 서버·세션이 그 값을 물려받아, 새 claude가 자기를 부모의 자식 세션으로 보고
+/// 이름(-n)을 부모 세션 이름으로 덮거나 effort를 따라간다(2026-10-18 실측: `[Anvil] PLAN`, `CLAUDE_EFFORT=low`).
+/// 사용자 설정인 CLAUDE_CONFIG_DIR 등은 건드리지 않는다.
+const UNSET_PARENT_CLAUDE: &str = r#"for v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_PID|CLAUDE_JOB_DIR|CLAUDE_EFFORT)=.*/\1/p'); do unset "$v"; done; "#;
+
 pub fn live_sessions(files: &Files) -> Vec<String> {
     tmux(&files.conf())
         .args(["list-sessions", "-F", "#{session_name}"])
@@ -223,7 +229,7 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     let _ = std::fs::remove_file(files.models().join(format!("{name}.json")));
     let (title, model) = session_title(project, role);
     let cmd = format!(
-        "exec claude -n {} --model {model} --settings {}",
+        "{UNSET_PARENT_CLAUDE}exec claude -n {} --model {model} --settings {}",
         sh_quote(&title),
         sh_quote(&files.hooks().to_string_lossy())
     );
@@ -439,6 +445,29 @@ mod tests {
         assert_eq!(session_title(p, "run"), ("[Anvil] [BibleMap] RUN".to_string(), "sonnet"));
         assert_eq!(session_title(Path::new("/a/lab-taebro"), "plan").0, "[Anvil] [lab-taebro] PLAN");
         assert_eq!(sh_quote("[Anvil] [it's] PLAN"), r"'[Anvil] [it'\''s] PLAN'");
+    }
+
+    /// 다른 claude 세션 안에서 Anvil을 띄워도 새 claude가 부모의 변수를 물려받지 않는다
+    #[test]
+    fn parent_claude_env_is_dropped() {
+        let out = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("{UNSET_PARENT_CLAUDE}env"))
+            .env("CLAUDECODE", "1")
+            .env("CLAUDE_CODE_SESSION_ID", "parent")
+            .env("CLAUDE_CODE_PLUGIN_DIRS", "/x/cc-name-restore")
+            .env("CLAUDE_EFFORT", "low")
+            .env("CLAUDE_PID", "1")
+            .env("CLAUDE_CONFIG_DIR", "/keep")
+            .env("CC_SESSION_NAME", "[Anvil] [BibleMap] PLAN")
+            .output()
+            .unwrap();
+        let env = String::from_utf8_lossy(&out.stdout);
+        for gone in ["CLAUDECODE=", "CLAUDE_CODE_SESSION_ID=", "CLAUDE_CODE_PLUGIN_DIRS=", "CLAUDE_EFFORT=", "CLAUDE_PID="] {
+            assert!(!env.lines().any(|l| l.starts_with(gone)), "{gone} 남음");
+        }
+        assert!(env.contains("CLAUDE_CONFIG_DIR=/keep"));
+        assert!(env.contains("CC_SESSION_NAME=[Anvil] [BibleMap] PLAN"));
     }
 
     /// Finder에서 띄운 앱은 PATH·LANG이 없다 — tmux 명령은 늘 로그인 PATH와 UTF-8 로캘, `-u`를 실어야
