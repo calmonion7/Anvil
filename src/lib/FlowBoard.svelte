@@ -72,9 +72,10 @@
 </section>
 
 <style>
-  .flow { flex: none; margin: 4px 16px 20px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  /* 아래 여백 44px = 노드 → 터미널 열 머리 세로 관이 몸통을 보일 길이 */
+  .flow { flex: none; margin: 0 16px 44px; padding: 2px 8px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
   /* 위 여백은 후속후보 → 계획 세션 귀환 관(FlowLinks)이 넘어가는 자리 */
-  .row { position: relative; display: flex; align-items: center; min-width: 0; padding-top: 30px; }
+  .row { position: relative; display: flex; align-items: center; min-width: 0; padding-top: 22px; }
   .via { flex: 1; min-width: 40px; }
   /* 관(FlowLinks)은 노드 테두리에서 시작하고 이음쇠는 테두리 바로 바깥 — 노드가 이음쇠를 가리지 않는다 */
   .node { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--raised); color: var(--ink2); font: inherit; font-size: 11px; white-space: nowrap; }

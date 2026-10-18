@@ -485,7 +485,9 @@
   .skels.wide { width: 360px; }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
-  .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; flex-wrap: wrap; }
+  .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 16px; flex-wrap: wrap; }
+  .head .t1 { font-size: 14px; }
+  .head .btn { height: 28px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line); color: var(--ink2); font-size: 11px; white-space: nowrap; }
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
   .sp { flex: 1; }
