@@ -69,9 +69,9 @@ test("OS가 밝음이어도 어두운 배경", async ({ page }) => {
 });
 
 test("후속후보가 줄면 계획 세션으로 돌아가는 루프에 펄스", async ({ page }) => {
-  await expect(page.locator(".loopback")).toBeVisible();
+  await expect(link(page, "loop")).toHaveCount(1);
   await emit(page, "snapshot", { ...alpha, followups: alpha.followups.slice(1) });
-  await expect(page.locator('.loopback[data-edge="e5"] .pulse')).toHaveCount(1);
+  await expect(link(page, "loop").locator(".pulse")).toHaveCount(1);
 });
 
 test("터미널 유입 띠: 작업 중이면 흐르고, 보드 버튼이 명령을 채우면 펄스", async ({ page }) => {
@@ -124,18 +124,19 @@ test("세션 노드 ↓ 터미널 ↑ 다음 노드 — 직행 가로 화살표�
   const [plan, backlog, run, done, ip, ir] = await Promise.all(
     ['[data-node="plan"]', '[data-node="backlog"]', '[data-node="run"]', '[data-node="done"]', ".info-plan", ".info-run"].map(box),
   );
-  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThanOrEqual(3);
   // 각 화살표: 위쪽 끝은 노드 아래, 아래쪽 끝은 열 머리 위, 가로 위치는 노드 가운데
   for (const [id, node, col] of [["p-in", plan, ip], ["p-out", backlog, ip], ["r-in", run, ir], ["r-out", done, ir]] as const) {
     const b = (await link(page, id).locator(".base").boundingBox())!;
-    near(b.y, node.y + node.height);
-    near(b.y + b.height, col.y);
+    expect(b.y).toBeGreaterThanOrEqual(node.y + node.height - 1); // 노드 바로 아래에서
+    expect(b.y).toBeLessThanOrEqual(node.y + node.height + 6);
+    expect(b.y + b.height).toBeGreaterThanOrEqual(col.y); // 열 머리 띠 테두리까지
+    expect(b.y + b.height).toBeLessThanOrEqual(col.y + 12);
     expect(b.x).toBeGreaterThanOrEqual(Math.min(node.x, col.x) - 4);
     expect(b.x + b.width).toBeLessThanOrEqual(Math.max(node.x + node.width, col.x + col.width) + 4);
   }
   await emit(page, "sessions", { "/p/alpha-plan": { state: "working", sessionId: null, alive: true } });
   await expect(link(page, "p-in")).toHaveAttribute("data-flow", "active");
   await expect(link(page, "r-in")).toHaveAttribute("data-flow", "idle");
-  const loop = await box(".loopback");
-  expect(loop.y + loop.height).toBeLessThanOrEqual(plan.y + 1);
+  const loop = (await link(page, "loop").locator(".base").boundingBox())!;
+  expect(loop.y + loop.height).toBeLessThanOrEqual(plan.y + 2); // 노드 줄 위로 넘어간다(둥근 끝 두께만큼 여유)
 });

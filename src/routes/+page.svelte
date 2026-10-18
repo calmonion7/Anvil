@@ -44,7 +44,7 @@
   let fillError = $state("");
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
   /** 터미널을 거쳐 나가는 펄스 — FlowBoard가 올리고 FlowLinks가 그린다 */
-  let outPulses = $state({ pOut: 0, rOut: 0 });
+  let outPulses = $state({ pOut: 0, rOut: 0, loop: 0 });
   let mainEl = $state<HTMLElement>();
   let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
   /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
