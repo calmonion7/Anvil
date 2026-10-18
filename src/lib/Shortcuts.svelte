@@ -28,9 +28,26 @@
   let input = $state<HTMLInputElement>();
   /** 강조된 후보 위치 — Enter는 이 후보를 추가한다 */
   let hi = $state(0);
-  let hints = $derived(
-    commands.filter((c) => !items.includes(c) && c.toLowerCase().includes(draft.trim().toLowerCase().replace(/^\/$/, ""))).slice(0, MAX),
-  );
+  /** LIKE 검색 — 맨 앞 "/"는 무시. 점수: 0 이름 첫머리(/·:·- 뒤) · 1 중간 포함 · 2 글자 순서만 맞음 · null 불일치 */
+  function score(cmd: string, q: string): number | null {
+    const c = cmd.toLowerCase();
+    if (!q) return 1;
+    const i = c.indexOf(q);
+    if (i >= 0) return i === 0 || "/:-".includes(c[i - 1]) ? 0 : 1;
+    let k = 0;
+    for (const ch of c) if (ch === q[k]) k++;
+    return k === q.length ? 2 : null;
+  }
+  let hints = $derived.by(() => {
+    const q = draft.trim().toLowerCase().replace(/^\//, "");
+    return commands
+      .filter((c) => !items.includes(c))
+      .map((c) => [c, score(c, q)] as const)
+      .filter((x): x is readonly [string, number] => x[1] !== null)
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, MAX)
+      .map(([c]) => c);
+  });
   let listId = $derived(`sc-${role}-list`);
 
   async function open() {

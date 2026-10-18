@@ -251,13 +251,17 @@ test("단축 버튼 추가 자동완성: 실제 명령 목록(+내장) · 거르
   await run.getByRole("button", { name: "단축 버튼 추가" }).click();
   await expect(opts.first()).toBeVisible(); // "/"만 있어도 후보가 뜬다
   await expect(run.getByRole("option", { name: "/forge:fg-next", exact: true })).toHaveCount(0); // 이미 있음
+  await page.keyboard.type("ask"); // 미리 채운 "/" 뒤에 이어 쳐도 풀네임 없이
+  await expect(opts.first()).toHaveText("/forge:fg-ask");
 
   await box.fill("eli");
   await expect(opts).toHaveText(["/eli5"]); // 백엔드가 읽어 온 사용자 스킬
   await box.fill("cle");
   await expect(opts).toHaveText(["/clear"]); // 내장 명령
-  await box.fill("/lea");
-  await expect(opts).toHaveCount(0); // 부분 문자열이 아니면 없음
+  await box.fill("/lea"); // 맨 앞 "/"는 무시, 이름 첫머리 일치가 먼저
+  await expect(opts).toHaveText(["/forge:fg-learn", "/clear"]);
+  await box.fill("fgdr"); // 글자 순서만 맞아도
+  await expect(opts.first()).toHaveText("/forge:fg-doctor");
   await box.fill("learn"); // "lea"는 /clear에도 들어 있다
   await expect(opts).toHaveText(["/forge:fg-learn"]);
   await page.keyboard.press("Enter");
