@@ -88,7 +88,7 @@ after=$(geom)
 if near "$zoomed" "$after" && ! near "$normal" "$zoomed"; then
   echo "통과 최대화: $zoomed → $after"
 else
-  echo "실패 최대화: 기대 $zoomed(일반 $normal과 달라야 함), 실제 $after"; fail=1
+  echo "실패 최대화: 기대 ${zoomed}(일반 ${normal}과 달라야 함), 실제 $after"; fail=1
 fi
 quit
 exit $fail

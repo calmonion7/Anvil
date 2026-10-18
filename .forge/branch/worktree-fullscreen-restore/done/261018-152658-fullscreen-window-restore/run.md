@@ -14,3 +14,14 @@
 1. cargo test: 통과(25) → 통과(27, 새 단위 테스트 2개 포함) — 회귀 가드 유지
 2. check-fullscreen-restore.sh: 스크립트 없음 → exit 2(화면 잠김, 판정 불가)
 3. 사람 UAT: 미실행
+
+## 수리 1회차 (fg-loop in-place repair, replan-round 1/3)
+- C2 실패 증거: 재실행 창 `0 33 1512 894`(확대/축소 크기). 저장 파일의 크기·위치는 맞았지만 `maximized: true` — macOS는 전체화면 창을 최대화로 보고해 플러그인이 그대로 저장한다.
+- 수리: 전체화면 직전의 최대화 여부도 기억해 함께 되돌린다(`patch_window_state(.., maximized)`). 단위 테스트 입력을 `maximized: true`로 바꿔 이 경우를 고정.
+- 스크립트: 한글 조사가 변수명에 붙던 `$normal과` → `${normal}과`.
+- S1 — ✅ 수리 후 통과 · S2 — ✅ 첫 판 코드에서 실패(전체화면 케이스), 수리 후 통과
+
+## DoD (수리 후)
+1. cargo test: 27 passed
+2. check-fullscreen-restore.sh: exit 0 — "통과 전체화면: 100 100 960 700 → 100 100 960 700", "통과 최대화: 0 33 1512 894 → 0 33 1512 894"
+3. 사람 UAT (a)·(b): 같은 시나리오를 C2·C3가 자동 판정

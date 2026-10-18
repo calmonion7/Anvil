@@ -1,5 +1,6 @@
 <!-- forge-slug: fullscreen-window-restore --> <!-- task: 7 -->
 <!-- tdd: off -->
+<!-- repaired-by: fg-loop -->
 <!-- retro-hint: optional -->
 # 전체화면으로 종료해도 직전 일반 창 크기·위치로 다시 뜨게
 

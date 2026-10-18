@@ -17,9 +17,11 @@ struct AppState {
     watchers: Mutex<HashMap<PathBuf, Debouncer<notify::RecommendedWatcher>>>,
     session_watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
     terms: session::Terms,
-    /// 마지막 일반 창 크기·위치(전체화면·최대화·최소화가 아닐 때)와 지금 전체화면인지.
+    /// 마지막 일반 창 크기·위치(전체화면·최대화·최소화가 아닐 때)와 지금 전체화면인지,
+    /// 전체화면 직전에 최대화였는지(macOS는 전체화면 창도 최대화로 보고한다).
     normal_window: Mutex<Option<NormalWindow>>,
     fullscreen: Mutex<bool>,
+    maximized: Mutex<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -35,7 +37,12 @@ fn track_window(window: &tauri::Window) {
     let state = window.state::<AppState>();
     let fullscreen = window.is_fullscreen().unwrap_or(false);
     *state.fullscreen.lock().unwrap() = fullscreen;
-    if fullscreen || window.is_maximized().unwrap_or(false) || window.is_minimized().unwrap_or(false) {
+    if fullscreen {
+        return;
+    }
+    let maximized = window.is_maximized().unwrap_or(false);
+    *state.maximized.lock().unwrap() = maximized;
+    if maximized || window.is_minimized().unwrap_or(false) {
         return;
     }
     if let (Ok(size), Ok(pos)) = (window.inner_size(), window.outer_position()) {
@@ -50,10 +57,11 @@ fn track_window(window: &tauri::Window) {
     }
 }
 
-/// window-state 파일에서 `label` 창의 크기·위치만 `w`로 바꾼다. 최대화 등 다른 값은 그대로 둔다.
-fn patch_window_state(json: &str, label: &str, w: NormalWindow) -> Option<String> {
+/// window-state 파일에서 `label` 창의 크기·위치를 `w`로, 최대화 여부를 `maximized`로 바꾼다.
+fn patch_window_state(json: &str, label: &str, w: NormalWindow, maximized: bool) -> Option<String> {
     let mut v: serde_json::Value = serde_json::from_str(json).ok()?;
     let entry = v.get_mut(label)?.as_object_mut()?;
+    entry.insert("maximized".into(), maximized.into());
     entry.insert("width".into(), w.width.into());
     entry.insert("height".into(), w.height.into());
     entry.insert("x".into(), w.x.into());
@@ -75,10 +83,11 @@ fn restore_normal_window_state(app: &AppHandle) {
     let Ok(dir) = app.path().app_config_dir() else {
         return;
     };
+    let maximized = *state.maximized.lock().unwrap();
     let path = dir.join(tauri_plugin_window_state::DEFAULT_FILENAME);
     if let Some(json) = std::fs::read_to_string(&path)
         .ok()
-        .and_then(|s| patch_window_state(&s, "main", w))
+        .and_then(|s| patch_window_state(&s, "main", w, maximized))
     {
         let _ = std::fs::write(path, json);
     }
@@ -436,10 +445,11 @@ mod tests {
 
     #[test]
     fn patch_window_state_replaces_geometry_only() {
-        let json = r#"{"main":{"width":3024,"height":1964,"x":0,"y":0,"prev_x":0,"prev_y":0,"maximized":false,"visible":true,"decorated":true,"fullscreen":false}}"#;
+        // macOS는 전체화면 창을 최대화로 보고해 플러그인이 maximized: true 로 저장한다.
+        let json = r#"{"main":{"width":3024,"height":1964,"x":0,"y":0,"prev_x":0,"prev_y":0,"maximized":true,"visible":true,"decorated":true,"fullscreen":false}}"#;
         let w = NormalWindow { width: 900, height: 700, x: 100, y: 100 };
         let out: serde_json::Value =
-            serde_json::from_str(&patch_window_state(json, "main", w).unwrap()).unwrap();
+            serde_json::from_str(&patch_window_state(json, "main", w, false).unwrap()).unwrap();
         assert_eq!(out["main"]["width"], 900);
         assert_eq!(out["main"]["height"], 700);
         assert_eq!(out["main"]["x"], 100);
@@ -451,7 +461,7 @@ mod tests {
     #[test]
     fn patch_window_state_ignores_missing_window() {
         let w = NormalWindow { width: 1, height: 1, x: 0, y: 0 };
-        assert!(patch_window_state(r#"{"other":{}}"#, "main", w).is_none());
-        assert!(patch_window_state("not json", "main", w).is_none());
+        assert!(patch_window_state(r#"{"other":{}}"#, "main", w, false).is_none());
+        assert!(patch_window_state("not json", "main", w, false).is_none());
     }
 }
