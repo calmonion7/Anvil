@@ -6,7 +6,7 @@
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
   import FlowBoard from "$lib/FlowBoard.svelte";
-  import FlowLinks from "$lib/FlowLinks.svelte";
+  import FlowLinks, { type FlowPulses } from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
@@ -43,8 +43,8 @@
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
-  /** 터미널을 거쳐 나가는 펄스 — FlowBoard가 올리고 FlowLinks가 그린다 */
-  let outPulses = $state({ pOut: 0, rOut: 0, loop: 0 });
+  /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
+  let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
   let mainEl = $state<HTMLElement>();
   let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
   /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */

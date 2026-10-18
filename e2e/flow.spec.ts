@@ -3,8 +3,7 @@ import { mockIpc, alpha } from "./mock-ipc";
 
 // 흐름도(FlowBoard): 노드 건수 · 세션 상태 → 흐르는 화살표 · .forge 변화 → 펄스+로그 · 동작 줄이기 · 어두움 고정
 
-const edge = (page: Page, e: string) => page.locator(`.edge[data-edge="${e}"]`);
-/** 노드 ↔ 터미널 열 머리 세로 화살표(FlowLinks) */
+/** 흐름도의 관(FlowLinks) */
 const link = (page: Page, id: string) => page.locator(`[data-link="${id}"]`);
 const emit = (page: Page, event: string, payload: unknown) =>
   page.evaluate(([ev, p]) => (window as any).__emit(ev, p), [event, payload] as const);
@@ -26,7 +25,7 @@ test("노드 건수는 스냅샷 값", async ({ page }) => {
 test("실행 세션 작업 중 → 실행 쪽 화살표(백로그→실행, 실행 터미널→완료)가 흐르고, 종료되면 멈춤", async ({ page }) => {
   await expect(link(page, "r-out")).toHaveAttribute("data-flow", "idle");
   await emit(page, "sessions", runWorking);
-  await expect(edge(page, "e2")).toHaveAttribute("data-flow", "active");
+  await expect(link(page, "e2")).toHaveAttribute("data-flow", "active");
   await expect(link(page, "r-out")).toHaveAttribute("data-flow", "active");
   await expect(link(page, "p-out")).toHaveAttribute("data-flow", "idle");
   const anim = await link(page, "r-out").locator(".dots").evaluate((el) => getComputedStyle(el).animationName);
@@ -126,17 +125,21 @@ test("세션 노드 ↓ 터미널 ↑ 다음 노드 — 직행 가로 화살표�
   );
   // 각 화살표: 위쪽 끝은 노드 아래, 아래쪽 끝은 열 머리 위, 가로 위치는 노드 가운데
   for (const [id, node, col] of [["p-in", plan, ip], ["p-out", backlog, ip], ["r-in", run, ir], ["r-out", done, ir]] as const) {
-    const b = (await link(page, id).locator(".base").boundingBox())!;
-    expect(b.y).toBeGreaterThanOrEqual(node.y + node.height - 1); // 노드 바로 아래에서
-    expect(b.y).toBeLessThanOrEqual(node.y + node.height + 6);
-    expect(b.y + b.height).toBeGreaterThanOrEqual(col.y); // 열 머리 띠 테두리까지
-    expect(b.y + b.height).toBeLessThanOrEqual(col.y + 12);
-    expect(b.x).toBeGreaterThanOrEqual(Math.min(node.x, col.x) - 4);
-    expect(b.x + b.width).toBeLessThanOrEqual(Math.max(node.x + node.width, col.x + col.width) + 4);
+    // 관 굵기(12px)만큼 경계 상자가 양쪽으로 6px 넓다
+    const b = (await link(page, id).locator(".wall").boundingBox())!;
+    expect(b.y).toBeGreaterThanOrEqual(node.y + node.height - 8); // 노드 바로 아래에서
+    expect(b.y).toBeLessThanOrEqual(node.y + node.height + 2);
+    expect(b.y + b.height).toBeGreaterThanOrEqual(col.y + 4); // 열 머리 띠 테두리까지
+    expect(b.y + b.height).toBeLessThanOrEqual(col.y + 16);
+    expect(b.x).toBeGreaterThanOrEqual(Math.min(node.x, col.x) - 8);
+    expect(b.x + b.width).toBeLessThanOrEqual(Math.max(node.x + node.width, col.x + col.width) + 8);
   }
   await emit(page, "sessions", { "/p/alpha-plan": { state: "working", sessionId: null, alive: true } });
   await expect(link(page, "p-in")).toHaveAttribute("data-flow", "active");
   await expect(link(page, "r-in")).toHaveAttribute("data-flow", "idle");
-  const loop = (await link(page, "loop").locator(".base").boundingBox())!;
-  expect(loop.y + loop.height).toBeLessThanOrEqual(plan.y + 2); // 노드 줄 위로 넘어간다(둥근 끝 두께만큼 여유)
+  const loop = (await link(page, "loop").locator(".wall").boundingBox())!;
+  expect(loop.y).toBeLessThan(plan.y - 8); // 노드 줄 위로 넘어가
+  expect(loop.y + loop.height).toBeLessThanOrEqual(plan.y + 8); // 계획 세션 윗변으로 들어간다
+  // 가로 관도 같은 관 — 백로그→실행 세션, 최근 완료→후속후보
+  await expect(page.locator("[data-link]")).toHaveCount(7);
 });

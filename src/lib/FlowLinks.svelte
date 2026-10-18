@@ -1,9 +1,14 @@
+<script lang="ts" module>
+  /** 관별 펄스 횟수 — FlowBoard가 .forge 변화를 감지해 올린다 */
+  export type FlowPulses = { pOut: number; rOut: number; loop: number; e2: number; e4: number };
+</script>
+
 <script lang="ts">
   import { tick } from "svelte";
 
-  /** 흐름도 노드 ↔ 터미널 열 머리를 잇는 곡선 — 계획 세션 ↓ 계획 터미널 ↑ 백로그,
-      실행 세션 ↓ 실행 터미널 ↑ 최근 완료, 그리고 노드 줄 위로 넘어가는 후속후보 → 계획 세션 귀환.
-      실제 위치를 재서 그리므로 폭 조절을 따라간다. */
+  /** 흐름도의 관(파이프) — 노드 줄과 터미널 열 머리를 잇는다.
+      계획 세션 ↓ 계획 터미널 ↑ 백로그 → 실행 세션 ↓ 실행 터미널 ↑ 최근 완료 → 후속후보 ⌒ 계획 세션.
+      실제 위치를 재서 그리므로 폭 조절을 따라간다. 세션이 작업 중이면 그 관 안에 빛 캡슐이 흐른다. */
   let {
     root,
     planWorking,
@@ -15,23 +20,31 @@
     root: HTMLElement | undefined;
     planWorking: boolean;
     runWorking: boolean;
-    /** 계획 터미널→백로그(백로그 증가) · 실행 터미널→최근 완료(봉인 증가) · 귀환(후속후보 감소) 펄스 횟수 */
-    pulses: { pOut: number; rOut: number; loop: number };
+    pulses: FlowPulses;
     /** 바뀌면 다시 잰다(프로젝트 전환 등) */
     deps: unknown;
   } = $props();
 
-  type Id = "p-in" | "p-out" | "r-in" | "r-out" | "loop";
-  type Link = { id: Id; d: string; role: "plan" | "run" | "loop" };
-  let links = $state<Link[]>([]);
+  type Id = "p-in" | "p-out" | "e2" | "r-in" | "r-out" | "e4" | "loop";
+  type Tone = "plan" | "run" | "done" | "loop";
+  type Pt = { x: number; y: number };
+  type Pipe = { id: Id; tone: Tone; d: string; a: Pt; b: Pt; deg: number };
+  let pipes = $state<Pipe[]>([]);
   let size = $state({ w: 0, h: 0 });
 
-  /** 위 점(x1,y1)에서 아래 점(x2,y2)까지 S자 곡선. up이면 아래에서 위로 그린다(화살촉이 위). */
-  function curve(x1: number, y1: number, x2: number, y2: number, up: boolean): string {
-    const m = (y1 + y2) / 2;
-    return up
-      ? `M ${x2} ${y2} C ${x2} ${m}, ${x1} ${m}, ${x1} ${y1}`
-      : `M ${x1} ${y1} C ${x1} ${m}, ${x2} ${m}, ${x2} ${y2}`;
+  /** a에서 b로 가는 S자 관. 세로 관은 세로 접선, 가로 관은 가로 접선으로 붙는다. */
+  function pipe(id: Id, tone: Tone, a: Pt, b: Pt, vertical: boolean): Pipe {
+    let d: string;
+    let deg: number;
+    if (vertical) {
+      const m = (a.y + b.y) / 2;
+      d = `M ${a.x} ${a.y} C ${a.x} ${m}, ${b.x} ${m}, ${b.x} ${b.y}`;
+      deg = b.y > a.y ? 90 : -90;
+    } else {
+      d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+      deg = 0;
+    }
+    return { id, tone, d, a, b, deg };
   }
 
   function measure() {
@@ -43,24 +56,38 @@
       q('[data-node="done"]'), q('[data-node="followups"]'), q(".info-plan"), q(".info-run"),
     ];
     size = { w: base.width, h: base.height };
-    if (!plan || !backlog || !run || !done || !follow || !ip || !ir) return (links = []);
-    const X = (r: DOMRect) => r.left + r.width / 2 - base.left;
+    if (!plan || !backlog || !run || !done || !follow || !ip || !ir) return (pipes = []);
+    const cx = (r: DOMRect) => r.left + r.width / 2 - base.left;
+    const cy = (r: DOMRect) => r.top + r.height / 2 - base.top;
     const top = (r: DOMRect) => r.top - base.top;
     const bot = (r: DOMRect) => r.bottom - base.top;
+    const left = (r: DOMRect) => r.left - base.left;
+    const right = (r: DOMRect) => r.right - base.left;
     /** 노드 가운데 x를 열 안으로 당긴 값 — 열 머리 쪽 끝점 */
-    const inCol = (x: number, c: DOMRect) => Math.min(Math.max(x, c.left - base.left + 32), c.right - base.left - 32);
-    // 열 머리 띠는 margin 8px 아래에서 시작한다 — 화살촉이 띠 테두리에 닿게
-    const colTop = (c: DOMRect) => top(c) + 6;
-    const lift = Math.min(top(plan), top(follow)) - 14;
-    links = [
-      { id: "p-in", role: "plan", d: curve(X(plan), bot(plan) + 2, inCol(X(plan), ip), colTop(ip), false) },
-      { id: "p-out", role: "plan", d: curve(X(backlog), bot(backlog) + 2, inCol(X(backlog), ip), colTop(ip), true) },
-      { id: "r-in", role: "run", d: curve(X(run), bot(run) + 2, inCol(X(run), ir), colTop(ir), false) },
-      { id: "r-out", role: "run", d: curve(X(done), bot(done) + 2, inCol(X(done), ir), colTop(ir), true) },
+    const inCol = (x: number, c: DOMRect) => Math.min(Math.max(x, left(c) + 40), right(c) - 40);
+    // 열 머리 띠는 .info 안 margin 8px 아래에서 시작한다 — 이음쇠가 띠 테두리에 걸리게
+    const colTop = (c: DOMRect) => top(c) + 8;
+    const down = (node: DOMRect, col: DOMRect): [Pt, Pt] => [
+      { x: cx(node), y: bot(node) },
+      { x: inCol(cx(node), col), y: colTop(col) },
+    ];
+    const [pInA, pInB] = down(plan, ip);
+    const [pOutB, pOutA] = down(backlog, ip);
+    const [rInA, rInB] = down(run, ir);
+    const [rOutB, rOutA] = down(done, ir);
+    const lift = Math.min(top(plan), top(follow)) - 22;
+    const fa = { x: cx(follow), y: top(follow) };
+    const pa = { x: cx(plan), y: top(plan) };
+    pipes = [
+      pipe("p-in", "plan", pInA, pInB, true),
+      pipe("p-out", "plan", pOutA, pOutB, true),
+      pipe("e2", "run", { x: right(backlog), y: cy(backlog) }, { x: left(run), y: cy(run) }, false),
+      pipe("r-in", "run", rInA, rInB, true),
+      pipe("r-out", "run", rOutA, rOutB, true),
+      pipe("e4", "done", { x: right(done), y: cy(done) }, { x: left(follow), y: cy(follow) }, false),
       {
-        id: "loop",
-        role: "loop",
-        d: `M ${X(follow)} ${top(follow) - 2} C ${X(follow)} ${lift}, ${X(plan)} ${lift}, ${X(plan)} ${top(plan) - 2}`,
+        id: "loop", tone: "loop", a: fa, b: pa, deg: 90,
+        d: `M ${fa.x} ${fa.y} C ${fa.x} ${lift}, ${pa.x} ${lift}, ${pa.x} ${pa.y}`,
       },
     ];
   }
@@ -75,48 +102,57 @@
     return () => ro.disconnect();
   });
 
-  const active = (l: Link) => (l.role === "plan" ? planWorking : l.role === "run" ? runWorking : false);
-  const pulseOf = (l: Link) =>
-    l.id === "p-out" ? pulses.pOut : l.id === "r-out" ? pulses.rOut : l.id === "loop" ? pulses.loop : 0;
+  /** 관이 흐르는 조건 — 그 관으로 무언가를 내보내는 세션이 작업 중일 때 */
+  const active = (p: Pipe) =>
+    p.id === "p-in" || p.id === "p-out" ? planWorking : p.id === "e2" || p.id === "r-in" || p.id === "r-out" ? runWorking : false;
+  const pulseOf = (p: Pipe) =>
+    ({ "p-in": 0, "p-out": pulses.pOut, e2: pulses.e2, "r-in": 0, "r-out": pulses.rOut, e4: pulses.e4, loop: pulses.loop })[p.id];
 </script>
 
-<svg class="links" width={size.w} height={size.h} aria-hidden="true">
-  <defs>
-    {#each ["plan", "run", "loop"] as r (r)}
-      <marker id="fl-{r}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
-        <path class="chev {r}" d="M2 1.5 L8 5 L2 8.5" />
-      </marker>
-    {/each}
-  </defs>
-  {#each links as l (l.id)}
-    <g class="link {l.role}" data-link={l.id} data-flow={active(l) ? "active" : "idle"}>
-      <!-- 기본선은 실제 픽셀 길이로(점선 간격이 경로 길이에 따라 늘지 않게), 구슬·펄스는 비율로 -->
-      <path class="base" d={l.d} marker-end="url(#fl-{l.role})" />
-      <path class="dots" d={l.d} pathLength="100" />
-      {#key pulseOf(l)}{#if pulseOf(l)}<path class="pulse" d={l.d} pathLength="100" />{/if}{/key}
+<svg class="pipes" width={size.w} height={size.h} aria-hidden="true">
+  {#each pipes as p (p.id)}
+    <g class="pipe {p.tone}" data-link={p.id} data-flow={active(p) ? "active" : "idle"}>
+      <!-- 관: 그림자 외벽 → 내벽 → 액체 채널 → 위쪽 광택 -->
+      <path class="casing" d={p.d} />
+      <path class="wall" d={p.d} />
+      <path class="channel" d={p.d} />
+      <path class="sheen" d={p.d} />
+      <!-- 흐름: 일정 속도의 빛 캡슐(실제 픽셀 간격) -->
+      <path class="dots" d={p.d} />
+      {#key pulseOf(p)}{#if pulseOf(p)}<path class="pulse" d={p.d} pathLength="100" />{/if}{/key}
+      <!-- 이음쇠: 출발은 둥근 플랜지, 도착은 방향 쉐브론이 든 플랜지 -->
+      <circle class="flange" cx={p.a.x} cy={p.a.y} r="5.5" />
+      <g transform="translate({p.b.x} {p.b.y}) rotate({p.deg})">
+        <circle class="flange" r="6.5" />
+        <path class="chev" d="M -2 -3 L 1.6 0 L -2 3" />
+      </g>
     </g>
   {/each}
 </svg>
 
 <style>
-  .links { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
-  .link { --c: rgba(255, 255, 255, .28); }
-  .link.plan { --c: var(--warn); }
-  .link.run { --c: var(--accent); }
-  .base { fill: none; stroke: var(--c); stroke-width: 1.25; stroke-linecap: round; opacity: .45; }
-  .loop .base { stroke-dasharray: 0 5; stroke-width: 1.6; opacity: .8; }
-  .chev { fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; stroke: rgba(255, 255, 255, .45); }
-  .chev.plan { stroke: var(--warn); }
-  .chev.run { stroke: var(--accent); }
-  /* 흐르는 구슬: 길이 0 대시 + 둥근 끝 = 점 */
-  .dots { fill: none; stroke: var(--c); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0 7; opacity: 0; }
-  .link[data-flow="active"] .base { opacity: .7; }
-  .link[data-flow="active"] .dots { opacity: 1; animation: march .7s linear infinite; }
-  .pulse { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 4 200; stroke-dashoffset: 4; filter: drop-shadow(0 0 3px var(--c)); animation: travel 1s ease-out forwards; }
-  @keyframes march { to { stroke-dashoffset: -7; } }
-  @keyframes travel { to { stroke-dashoffset: -100; opacity: .1; } }
+  .pipes { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
+  .pipe { --c: #8a8983; }
+  .pipe.plan { --c: var(--warn); }
+  .pipe.run { --c: var(--accent); }
+  .pipe.done { --c: var(--good); }
+  path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .casing { stroke: rgba(0, 0, 0, .7); stroke-width: 12; }
+  .wall { stroke: #2b2b29; stroke-width: 10; }
+  .channel { stroke: var(--c); stroke-width: 5; opacity: .22; transition: opacity .3s; }
+  /* 광택: 관 위쪽에 얇은 빛 — 3px 위로 띄워 겹친다 */
+  .sheen { stroke: rgba(255, 255, 255, .07); stroke-width: 2; transform: translateY(-3px); }
+  .dots { stroke: var(--c); stroke-width: 4; stroke-dasharray: 7 11; opacity: 0; }
+  .pipe[data-flow="active"] .channel { opacity: .45; }
+  .pipe[data-flow="active"] .dots { opacity: 1; filter: drop-shadow(0 0 3px var(--c)); animation: flow .9s linear infinite; }
+  .pulse { stroke: #fff; stroke-width: 5; stroke-dasharray: 3 200; stroke-dashoffset: 3; filter: drop-shadow(0 0 5px var(--c)); animation: travel 1.1s cubic-bezier(.3, 0, .2, 1) forwards; }
+  .flange { fill: #1f1f1d; stroke: var(--c); stroke-opacity: .55; stroke-width: 1.5; }
+  .chev { stroke: var(--c); stroke-width: 1.6; opacity: .9; }
+  .pipe[data-flow="active"] .flange { stroke-opacity: .9; }
+  @keyframes flow { to { stroke-dashoffset: -18; } }
+  @keyframes travel { to { stroke-dashoffset: -100; opacity: .2; } }
   @media (prefers-reduced-motion: reduce) {
-    .link[data-flow="active"] .dots, .pulse { animation: none; }
+    .pipe[data-flow="active"] .dots, .pulse { animation: none; }
     .pulse { display: none; }
   }
 </style>
