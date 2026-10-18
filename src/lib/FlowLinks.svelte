@@ -139,11 +139,27 @@
   $effect(() => {
     void deps;
     if (!root) return;
+    const el = root;
     tick().then(measure);
+    // 흐름도 위 요소(머리줄·오류 띠·문서 탭 줄)가 생기거나 크기가 바뀌면 흐름도가 밀린다 —
+    // root 직계 요소와 노드·열 머리를 모두 지켜보고, 새로 생긴 직계 요소도 바로 지켜본다.
     const ro = new ResizeObserver(measure);
-    ro.observe(root);
-    root.querySelectorAll(".flow, .info-plan, .info-run").forEach((el) => ro.observe(el));
-    return () => ro.disconnect();
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      for (const c of el.children) ro.observe(c);
+      el.querySelectorAll(".flow, .info-plan, .info-run").forEach((n) => ro.observe(n));
+    };
+    watch();
+    const mo = new MutationObserver(() => {
+      watch();
+      measure();
+    });
+    mo.observe(el, { childList: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   });
 
   /** 관이 흐르는 조건 — 그 관으로 무언가를 내보내는 세션이 작업 중일 때 */

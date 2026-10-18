@@ -144,6 +144,21 @@ test("세션 노드 ↓ 터미널 ↑ 다음 노드 — 직행 가로 화살표�
   await expect(page.locator("[data-link]")).toHaveCount(7);
 });
 
+test("문서 탭 줄이 생겨 흐름도가 밀려도 관이 노드를 따라간다", async ({ page }) => {
+  await page.getByRole("button", { name: "plan", exact: true }).click(); // 문서 탭이 열리며 탭 줄이 생긴다
+  await page.keyboard.press("Escape"); // 문서는 닫혀도 탭 줄은 남는다
+  await expect(page.locator(".tabs")).toBeVisible();
+  for (const [id, node] of [["p-in", "plan"], ["r-in", "run"]] as const) {
+    const n = (await page.locator(`[data-node="${node}"]`).boundingBox())!;
+    await expect
+      .poll(async () => {
+        const b = (await link(page, id).locator(".wall").boundingBox())!;
+        return Math.abs(b.y - (n.y + n.height - 6)); // 관 굵기 절반(6px)만큼 위로 겹쳐 시작
+      })
+      .toBeLessThanOrEqual(3);
+  }
+});
+
 /** 가운데 경계를 body 가로 비율 x 지점까지 끈다 */
 async function dragSplit(page: Page, x: number) {
   const sep = (await page.locator('[role="separator"][aria-orientation="vertical"]').boundingBox())!;
