@@ -1,14 +1,18 @@
 <script lang="ts">
   import type { Snapshot, Stage, CheckResult } from "./types";
   import { splitTitle } from "./format";
+  import type { Snippet } from "svelte";
 
   /** 위쪽 고정 띠 — 진행 영역(「지금」 띠 · 루프 줄). 건수 칩은 FlowBoard 노드로 옮겼다. */
   let {
     snap,
     onOpen,
+    tools,
   }: {
     snap: Snapshot;
     onOpen: (rel: string, label: string) => void;
+    /** 둘째 줄 오른쪽 — 실행 세션 단축 버튼 */
+    tools?: Snippet;
   } = $props();
 
   const steps: { stage: Stage | "plan"; label: string }[] = [
@@ -61,6 +65,8 @@
         {#if active.inLoop || active.running}
           <span class="t3">{[active.inLoop && "루프 소속", active.running && "실행 중"].filter(Boolean).join(" · ")}</span>
         {/if}
+        <span class="sp2"></span>
+        {@render tools?.()}
       </div>
     {:else}
       {#if next}
@@ -78,6 +84,7 @@
           </button>
         {/each}
       </span>
+      <div class="line2"><span class="sp2"></span>{@render tools?.()}</div>
     {/if}
   </div>
 
@@ -112,6 +119,7 @@
   .band > .tt { font-weight: 600; }
   /* 단계 묶음은 폭을 내용에서 잰다 — WebKit이 그 계산에서 flex gap·flex-basis를 빼먹어 뒤 버튼이 '봉인'을 덮었다.
      간격은 margin, 연결선 폭은 width로 준다. */
+  .sp2 { flex: 1; }
   .line2 { flex: 0 0 100%; display: flex; align-items: center; gap: 12px; padding-bottom: 2px; }
   .steps { flex: none; display: flex; align-items: center; }
   .steps > * + * { margin-left: 4px; }

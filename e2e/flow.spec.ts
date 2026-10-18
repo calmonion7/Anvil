@@ -78,7 +78,7 @@ test("터미널 유입 띠: 작업 중이면 흐르고, 보드 버튼이 명령�
   await emit(page, "sessions", runWorking);
   await expect(page.locator(".feed.run")).toHaveAttribute("data-flow", "active");
   await emit(page, "sessions", {});
-  await page.getByRole("button", { name: /다음 단계/ }).click();
+  await page.getByRole("group", { name: "실행 세션 단축 버튼" }).getByRole("button", { name: "/forge:fg-next", exact: true }).click();
   await expect(page.locator(".feed.run .fpulse")).toHaveCount(1);
   await expect(page.locator(".feed.plan .fpulse")).toHaveCount(0);
 });
@@ -207,4 +207,38 @@ test("가장자리가 아니면 접히지 않는다(20~80%)", async ({ page }) =
   await dragSplit(page, 0.25);
   await expect(page.locator(".foldrail-plan, .foldrail-run")).toHaveCount(0);
   await expect(page.locator(".term-plan")).toBeVisible();
+});
+
+test("단축 버튼: 기본값 · 누르면 그 세션에 채움 · ＋로 추가(이름=명령어) · ×로 삭제 · 다시 열어도 유지", async ({ page }) => {
+  const plan = page.getByRole("group", { name: "계획 세션 단축 버튼" });
+  const run = page.getByRole("group", { name: "실행 세션 단축 버튼" });
+  await expect(run.getByRole("button", { name: "/forge:fg-next", exact: true })).toBeVisible();
+  await expect(plan.getByRole("button", { name: "/forge:fg-ask", exact: true })).toBeVisible();
+  await expect(page.locator(".head").getByRole("button", { name: /다음 단계/ })).toHaveCount(0); // 머리줄에서 옮김
+
+  await plan.getByRole("button", { name: "단축 버튼 추가" }).click();
+  await plan.getByRole("textbox", { name: "추가할 명령어" }).fill("/forge:fg-status");
+  await page.keyboard.press("Enter");
+  const added = plan.getByRole("button", { name: "/forge:fg-status", exact: true });
+  await expect(added).toBeVisible();
+  await added.click();
+  const fills = await page.evaluate(() => (window as any).__calls.filter((c: any) => c.cmd === "session_fill").map((c: any) => c.args));
+  expect(fills.at(-1)).toMatchObject({ role: "plan", text: "/forge:fg-status" });
+
+  await page.reload();
+  await expect(plan.getByRole("button", { name: "/forge:fg-status", exact: true })).toBeVisible(); // 저장됨
+
+  await plan.getByRole("button", { name: "/forge:fg-status", exact: true }).hover();
+  await plan.getByRole("button", { name: "/forge:fg-status 단축 버튼 삭제" }).click();
+  await expect(plan.getByRole("button", { name: "/forge:fg-status", exact: true })).toHaveCount(0);
+
+  await plan.getByRole("button", { name: "단축 버튼 추가" }).click();
+  await page.keyboard.press("Escape"); // Esc는 입력만 닫는다
+  await expect(plan.getByRole("textbox")).toHaveCount(0);
+});
+
+test("세션이 작업 중이면 그 열의 단축 버튼은 꺼진다", async ({ page }) => {
+  await emit(page, "sessions", runWorking);
+  await expect(page.getByRole("group", { name: "실행 세션 단축 버튼" }).getByRole("button", { name: "/forge:fg-next", exact: true })).toBeDisabled();
+  await expect(page.getByRole("group", { name: "계획 세션 단축 버튼" }).getByRole("button", { name: "/forge:fg-ask", exact: true })).toBeEnabled();
 });

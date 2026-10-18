@@ -5,6 +5,7 @@
   import { marked } from "marked";
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
+  import Shortcuts from "$lib/Shortcuts.svelte";
   import FlowBoard from "$lib/FlowBoard.svelte";
   import FlowLinks, { type FlowPulses } from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
@@ -15,6 +16,9 @@
   const SELECTED_KEY = "anvil.selected";
   /** 세로 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
   const LAYOUT_KEY = "anvil.layout";
+  /** 열 머리판 단축 버튼(명령어 목록) — 앱 전체 설정 */
+  const SHORTCUT_KEY = "anvil.shortcuts";
+  const DEFAULT_SHORTCUTS: Record<Role, string[]> = { plan: ["/forge:fg-ask"], run: ["/forge:fg-next"] };
   const ROLES: Role[] = ["plan", "run"];
 
   let projects = $state<Snapshot[]>([]);
@@ -56,6 +60,20 @@
     { v: 1, label: "실행 접기 · 계획창만" },
   ];
   let rail = $state(false);
+  let shortcuts = $state<Record<Role, string[]>>(loadShortcuts());
+  function loadShortcuts(): Record<Role, string[]> {
+    try {
+      const v = JSON.parse(localStorage.getItem(SHORTCUT_KEY) ?? "null");
+      if (Array.isArray(v?.plan) && Array.isArray(v?.run)) return v;
+    } catch {}
+    return structuredClone(DEFAULT_SHORTCUTS);
+  }
+  function setShortcuts(r: Role, items: string[]) {
+    shortcuts[r] = items;
+    try {
+      localStorage.setItem(SHORTCUT_KEY, JSON.stringify(shortcuts));
+    } catch {}
+  }
   /** 건수 칩이 연 목록 팝업 */
   let listOpen = $state<ListKind | null>(null);
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
@@ -111,7 +129,6 @@
   }
 
   const actions: BoardActions = {
-    next: () => fill("run", "/forge:fg-next"),
     run: (p) => fill("run", p.task == null ? "/forge:fg-run" : `/forge:fg-run #${p.task}`),
     start: (f) => fill("plan", `/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`),
     setHidden: async (f, hidden) => {
@@ -380,10 +397,6 @@
             </button>
           {/each}
         </div>
-        {#if current.hasForge}
-          {#if runBlocked}<span class="t3">{runBlocked}</span>{/if}
-          <button class="btn pri" disabled={!!runBlocked} title="실행 세션 입력창에 /forge:fg-next를 채웁니다(Enter는 직접)" onclick={actions.next}>다음 단계 ▸</button>
-        {/if}
       </header>
       {#each current.errors as err (err.path)}
         <div class="band">
@@ -441,13 +454,23 @@
             {:else}
             <div class="info info-{r}">
                 {#if r === "run"}
-                  {#key current.path}<NowStrip snap={current} onOpen={openDoc} />{/key}
+                  {#key current.path}
+                    <NowStrip snap={current} onOpen={openDoc}>
+                      {#snippet tools()}
+                        <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} />
+                      {/snippet}
+                    </NowStrip>
+                  {/key}
                 {:else}
                   <div class="pband">
                     <span class="kicker">계획</span>
                     <span class="tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
                     <button class="btn sm" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
-                    <div class="pline2 t3">새 계획은 계획 세션에서 <code>/forge:fg-ask</code></div>
+                    <div class="pline2">
+                      <span class="t3">후속후보 착수는 목록의 「착수」로</span>
+                      <span class="sp"></span>
+                      <Shortcuts role="plan" items={shortcuts.plan} blocked={planBlocked} onFill={(t) => fill("plan", t)} onChange={(v) => setShortcuts("plan", v)} />
+                    </div>
                   </div>
                 {/if}
             </div>
