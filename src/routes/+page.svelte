@@ -41,6 +41,8 @@
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
+  /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
+  let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
   /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
@@ -79,6 +81,7 @@
       const name = await invoke<string>("session_fill", { project: current.path, role, text });
       sessions = await invoke<Record<string, SessionState>>("session_states");
       focus = { name, tick: focus.tick + 1 };
+      lastFill = { role, text, n: lastFill.n + 1 };
     } catch (e) {
       fillError = String(e);
     }
@@ -364,7 +367,7 @@
       <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
       {#key current.path}
         <NowStrip snap={current} onOpen={openDoc} />
-        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} />
+        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} fill={lastFill} />
       {/key}
       <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
@@ -373,6 +376,10 @@
             {@const s = sessionOf(current.path, r)}
             {@const n = names[current.path][i]}
             <div class="cell term-{r}">
+              <!-- 유입 띠: 이 터미널은 위 흐름도의 같은 색 노드·보드 버튼에서 입력을 받는다 -->
+              <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title="보드 버튼이 이 세션 입력창에 명령을 채웁니다">
+                {#key lastFill.n}{#if lastFill.n && lastFill.role === r}<span class="fpulse"></span>{/if}{/key}
+              </div>
               <SessionPane
                 project={current.path}
                 projectName={current.name}
@@ -470,6 +477,18 @@
   .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .cell > :global(*) { flex: 1; }
   .term-plan { grid-area: 1 / 1 / 2 / 2; }
+  .cell > .feed { flex: none; position: relative; height: 3px; overflow: hidden; background: var(--line); }
+  .feed.plan { --c: var(--warn); }
+  .feed.run { --c: var(--accent); }
+  .feed[data-flow="active"] { background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 14px); background-size: 14px 3px; animation: feed-march .8s linear infinite; }
+  .feed[data-flow="idle"] { background: color-mix(in srgb, var(--c) 35%, transparent); }
+  .fpulse { position: absolute; top: 0; left: 0; width: 48px; height: 3px; background: var(--ink); box-shadow: 0 0 8px var(--c); animation: feed-travel .9s ease-out forwards; }
+  @keyframes feed-march { to { background-position: 14px 0; } }
+  @keyframes feed-travel { from { left: 0; opacity: 1; } to { left: calc(100% - 48px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .feed[data-flow="active"], .fpulse { animation: none; }
+    .fpulse { display: none; }
+  }
   .term-run { grid-area: 1 / 3 / 2 / 4; }
   .doc { position: absolute; inset: 0; z-index: 3; overflow-y: auto; padding: 8px 24px 48px; background: var(--plane); border-top: 1px solid var(--line); }
   .dh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }

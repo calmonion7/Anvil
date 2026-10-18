@@ -11,24 +11,27 @@
     run,
     onList,
     followupCount,
+    fill,
   }: {
     snap: Snapshot;
     plan: SessionState | null;
     run: SessionState | null;
     onList: (kind: ListKind) => void;
     followupCount: number;
+    /** 보드 버튼이 세션 입력창에 마지막으로 채운 명령(n은 횟수) */
+    fill: { role: "plan" | "run"; text: string; n: number };
   } = $props();
 
-  type Edge = "e1" | "e2" | "e3" | "e4";
+  type Edge = "e1" | "e2" | "e3" | "e4" | "e5";
   const LOG_MAX = 50;
 
-  let pulses = $state<Record<Edge, number>>({ e1: 0, e2: 0, e3: 0, e4: 0 });
+  let pulses = $state<Record<Edge, number>>({ e1: 0, e2: 0, e3: 0, e4: 0, e5: 0 });
   let log = $state<{ id: number; t: string; who: string; text: string }[]>([]);
   let seq = 0;
 
   const working = (s: SessionState | null) => !!s?.alive && s.state === "working";
   const waiting = (s: SessionState | null) => !!s?.alive && s.state === "waiting";
-  let flow = $derived<Record<Edge, boolean>>({ e1: working(plan), e2: working(run), e3: working(run), e4: false });
+  let flow = $derived<Record<Edge, boolean>>({ e1: working(plan), e2: working(run), e3: working(run), e4: false, e5: false });
 
   function push(who: string, text: string, edge?: Edge) {
     const t = new Date().toTimeString().slice(0, 8);
@@ -53,6 +56,13 @@
     else if (cur.backlog < p.backlog) push("실행", `백로그에서 ${p.backlog - cur.backlog}건 꺼냄`, "e2");
     if (cur.done > p.done) push("완료", `봉인 +${cur.done - p.done}`, "e3");
     if (cur.follow > p.follow) push("회고", `후속후보 +${cur.follow - p.follow}`, "e4");
+    else if (cur.follow < p.follow) push("계획", `후속후보 ${p.follow - cur.follow}건 착수·정리`, "e5");
+  });
+
+  let prevFill = 0;
+  $effect(() => {
+    if (fill.n > prevFill) push(fill.role === "plan" ? "계획 세션" : "실행 세션", `← ${fill.text}`, fill.role === "plan" ? "e5" : undefined);
+    prevFill = fill.n;
   });
 
   let prevPlan: string | undefined;
@@ -88,26 +98,29 @@
     {@render edge("e2")}
     <div class="node sess run" class:wait={waiting(run)} data-node="run">
       <span class="role">실행 세션</span>
-      <span class="st">{snap.active ? `#${snap.active.task ?? "—"} · ` : ""}{stateLabel(run)}</span>
+      <span class="st">{stateLabel(run)}</span>
     </div>
     {@render edge("e3")}
     <button class="node cnt done" data-node="done" onclick={() => onList("done")}>최근 완료 <span class="ct">{snap.doneTotal}</span></button>
     {@render edge("e4")}
     <button class="node cnt follow" data-node="followups" onclick={() => onList("followups")}>후속후보 <span class="ct">{followupCount}</span></button>
-    <span class="back t3" title="후속후보는 계획 세션에서 착수합니다">↺ 계획</span>
+    <!-- 귀환 루프: 후속후보 → 계획 세션(착수하면 다시 계획으로) -->
+    <span class="loopback" data-edge="e5" aria-hidden="true" title="후속후보는 계획 세션에서 착수합니다">
+      {#key pulses.e5}{#if pulses.e5}<span class="pulse back"></span>{/if}{/key}
+    </span>
   </div>
-  <ol class="log" aria-label="세션 로그">
-    {#each shown as l (l.id)}
-      <li><span class="tm">{l.t}</span><span class="who">{l.who}</span><span class="tx">{l.text}</span></li>
-    {:else}
-      <li class="empty">아직 변화 없음 — 세션이나 .forge가 바뀌면 여기 한 줄씩 쌓입니다</li>
-    {/each}
-  </ol>
+  {#if shown.length}
+    <ol class="log" aria-label="세션 로그">
+      {#each shown as l (l.id)}
+        <li><span class="tm">{l.t}</span><span class="who">{l.who}</span><span class="tx">{l.text}</span></li>
+      {/each}
+    </ol>
+  {/if}
 </section>
 
 <style>
-  .flow { flex: none; margin: 4px 16px 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-family: "SF Mono", Menlo, "Apple SD Gothic Neo", monospace; }
-  .row { display: flex; align-items: center; min-width: 0; }
+  .flow { flex: none; margin: 4px 16px 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .row { position: relative; display: flex; align-items: center; min-width: 0; padding-bottom: 16px; }
   .node { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--raised); color: var(--ink2); font: inherit; font-size: 11px; white-space: nowrap; }
   .sess .role { color: var(--ink); font-weight: 600; }
   .sess .st { color: var(--muted); }
@@ -119,7 +132,11 @@
   .done { border-color: var(--good); }
   .ct { color: var(--ink); font-weight: 600; }
   .node.wait { animation: breathe 1.6s ease-in-out infinite; }
-  .back { flex: none; margin-left: 8px; }
+  /* 행 아래 ㄷ자 선 — 오른쪽(후속후보) 아래에서 왼쪽(계획 세션) 아래로, 끝은 위로 향한 화살촉 */
+  .loopback { position: absolute; left: 48px; right: 48px; bottom: 2px; height: 14px; border: 1.5px dashed var(--line); border-top: 0; border-radius: 0 0 6px 6px; }
+  .loopback::after { content: ""; position: absolute; left: -5.5px; top: -6px; border: 4px solid transparent; border-bottom: 6px solid var(--muted); border-top: 0; }
+  .pulse.back { top: auto; bottom: -5px; left: auto; right: 0; animation: travel-back 1.2s ease-out forwards; }
+  @keyframes travel-back { from { right: 0; opacity: 1; } to { right: calc(100% - 8px); opacity: 0; } }
 
   /* 화살표: 기본은 흐린 선, 흐르는 중이면 점이 오른쪽으로 이동 */
   .edge { position: relative; flex: 1; min-width: 24px; height: 2px; margin: 0 4px; background: var(--line); overflow: visible; }
@@ -140,8 +157,8 @@
 
   .log { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; color: var(--ink2); }
   .log li { display: flex; gap: 12px; white-space: nowrap; overflow: hidden; }
+  .tm, .ct { font-family: "SF Mono", ui-monospace, Menlo, monospace; }
   .tm { color: var(--muted); font-variant-numeric: tabular-nums; }
   .who { color: var(--accent); min-width: 8ch; }
   .tx { overflow: hidden; text-overflow: ellipsis; }
-  .empty { color: var(--muted); }
 </style>
