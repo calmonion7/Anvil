@@ -105,7 +105,7 @@
     const [rInA, rInB] = down(run, ir);
     const [rOutB, rOutA] = down(done, ir);
     // 귀환 관: 후속후보 위로 올라가 노드 줄 위를 가로질러 계획 세션 위로 내려온다
-    const lift = Math.min(top(plan), top(follow)) - 12;
+    const lift = Math.min(top(plan), top(follow)) - 18;
     pipes = [
       pipe("p-in", "plan", drop(pInA, pInB)),
       pipe("p-out", "plan", drop(pOutB, pOutA).reverse()),
