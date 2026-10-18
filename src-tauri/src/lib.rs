@@ -368,9 +368,53 @@ fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<Stri
     std::fs::read_to_string(file).map_err(|e| e.to_string())
 }
 
+/// 빌드한 체크아웃의 루트. 업데이트는 항상 여기의 main을 다시 빌드한다.
+const REPO_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+
+/// 앱과 분리된 프로세스로 설치 스크립트를 돌린다 — 스크립트가 이 앱을 종료·교체하므로
+/// 앱이 꺼져도 살아 있어야 한다. 출력은 앱 데이터 폴더의 update.log로 보낸다.
+fn start_update(app: &AppHandle) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(data_dir(app).join("update.log"))?;
+    std::process::Command::new("/bin/bash")
+        .arg(Path::new(REPO_DIR).join("scripts/install-app.sh"))
+        .arg(REPO_DIR)
+        .stdin(std::process::Stdio::null())
+        .stdout(log.try_clone()?)
+        .stderr(log)
+        .process_group(0)
+        .spawn()?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // macOS 기본 메뉴의 앱 메뉴에 "업데이트 설치…"를 끼워 넣는다.
+        .menu(|app| {
+            let menu = tauri::menu::Menu::default(app)?;
+            let item = tauri::menu::MenuItem::with_id(
+                app,
+                "install-update",
+                "업데이트 설치…",
+                true,
+                None::<&str>,
+            )?;
+            if let Some(tauri::menu::MenuItemKind::Submenu(app_menu)) = menu.items()?.first() {
+                app_menu.insert(&item, 1)?;
+            }
+            Ok(menu)
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "install-update" {
+                if let Err(e) = start_update(app) {
+                    eprintln!("업데이트를 시작하지 못했다: {e}");
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // 창 크기·위치·최대화만 기억한다 — macOS 전체화면은 복원하지 않는다.
