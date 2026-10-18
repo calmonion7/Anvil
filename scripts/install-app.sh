@@ -25,7 +25,7 @@ cd "$REPO" || fail "레포가 없다: $REPO"
 branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "$branch" = main ] || fail "main 브랜치가 아니다($branch)"
 [ -z "$(git status --porcelain)" ] || fail "커밋하지 않은 변경이 있다"
-git pull --ff-only || fail "git pull --ff-only 실패"
+git pull --ff-only origin main || fail "git pull --ff-only origin main 실패"
 commit="$(git rev-parse HEAD)"
 
 if [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then

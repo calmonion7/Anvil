@@ -40,7 +40,7 @@ expect_fail "브랜치≠main" "$r"
 r="$(new_repo dirty)"; echo x > "$r/file"
 expect_fail "변경 있음" "$r"
 
-r="$(new_repo nopull)"   # upstream 이 없어 pull 이 실패한다
+r="$(new_repo nopull)"   # origin 리모트가 없어 pull 이 실패한다
 expect_fail "pull 실패" "$r"
 
 [ "$pass" -eq 3 ] && echo "3/3 통과" && exit 0
