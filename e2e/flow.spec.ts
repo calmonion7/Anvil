@@ -89,15 +89,29 @@ test("로그 영역 없음 · 흐름도가 맨 위, 열 머리에 계획·지금
   expect(now.y).toBeGreaterThan(flow.y + flow.height - 1);
   await expect(page.locator(".info-run")).toContainText("#9");
   await expect(page.locator(".info-run")).toContainText("활성 작업");
-  await expect(page.locator(".info-plan .pband")).toContainText("#11");
-  await expect(page.locator(".info-plan .pband")).toContainText("백로그 열하나");
+  await expect(page.locator(".info-plan .pband")).toContainText("후속후보에서 착수하거나 새 계획을 시작하세요");
+  await expect(page.locator(".info-plan .pband")).not.toContainText("백로그 열"); // 백로그는 실행 쪽 몫
   // 두 열 머리 높이가 같아야 아래 터미널 머리줄이 나란하다
   const ph = (await page.locator(".info-plan .pband").boundingBox())!.height;
   const rh = (await page.locator(".info-run .band").boundingBox())!.height;
   expect(Math.abs(ph - rh)).toBeLessThanOrEqual(1);
 });
 
-test("백로그가 비면 계획 열 머리에 안내", async ({ page }) => {
+test("실행 중인 작업이 없으면 실행 열 머리에 다음 백로그(우선순위 순)", async ({ page }) => {
+  await emit(page, "snapshot", { ...alpha, active: null });
+  const head = page.locator(".info-run .band");
+  await expect(head).toContainText("다음");
+  await expect(head).toContainText("#10");
+  await expect(head).toContainText("백로그 열");
+  await expect(head).toContainText("실행 대기 · 백로그 2건");
+});
+
+test("백로그도 비면 실행 열 머리에 '백로그 비어 있음'", async ({ page }) => {
   await page.getByRole("button", { name: /^empty main/ }).click();
-  await expect(page.locator(".info-plan .pband")).toContainText("쌓인 계획 없음");
+  await expect(page.locator(".info-run .band")).toContainText("백로그 비어 있음");
+});
+
+test("계획 열 머리의 후속후보 링크는 후속후보 목록을 연다", async ({ page }) => {
+  await page.locator(".info-plan").getByRole("button", { name: "후속후보 2건 보기" }).click();
+  await expect(page.getByRole("dialog", { name: "후속후보" })).toBeVisible();
 });

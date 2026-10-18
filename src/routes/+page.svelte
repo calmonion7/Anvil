@@ -8,9 +8,8 @@
   import FlowBoard from "$lib/FlowBoard.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
-  import { splitTitle } from "$lib/format";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
-  import type { Snapshot, PlanCard, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
+  import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
 
   const SELECTED_KEY = "anvil.selected";
   /** 세로 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
@@ -48,10 +47,6 @@
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
-  /** 계획 열 머리 — task 번호가 가장 큰 백로그(가장 최근에 쌓은 계획) */
-  let latestPlan = $derived(
-    current?.backlog.reduce<PlanCard | null>((a, b) => (a === null || (b.task ?? -1) > (a.task ?? -1) ? b : a), null) ?? null,
-  );
   let currentTab = $derived(activeTab === null ? null : tabs[activeTab] ?? null);
 
   function sessionOf(path: string, role: Role): SessionState | null {
@@ -385,17 +380,13 @@
                 {#if r === "run"}
                   {#key current.path}<NowStrip snap={current} onOpen={openDoc} />{/key}
                 {:else}
-                  {@const p = latestPlan}
                   <div class="pband">
                     <span class="t3 b kicker">계획</span>
-                    {#if p}
-                      <button class="plink tt" title={p.title} onclick={() => openDoc(p.path, `plan · ${p.task === null ? "#—" : `#${p.task}`}`)}>
-                        <span class="num">{p.task === null ? "#—" : `#${p.task}`}</span>{splitTitle(p.title)[0]}
-                      </button>
-                    {:else}
-                      <span class="ink2 tt">쌓인 계획 없음 — 계획 세션에서 fg-ask로 시작합니다</span>
-                    {/if}
-                    <div class="pline2 t3">{p ? "최근 쌓은 계획 · " : ""}백로그 {current.backlog.length}건 대기</div>
+                    <span class="ink2 tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
+                    <div class="pline2 t3">
+                      <button class="plink" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
+                      <span>· 새 계획은 계획 세션에서 /forge:fg-ask</span>
+                    </div>
                   </div>
                 {/if}
             </div>
@@ -507,10 +498,10 @@
   .info-run { grid-area: 1 / 3 / 2 / 4; }
   .info-run :global(.band) { flex: 1; }
   .pband { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; }
-  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; padding-bottom: 2px; }
+  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; gap: 4px; padding-bottom: 2px; }
   .kicker { letter-spacing: .04em; flex: none; }
   .tt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .plink { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; flex: 1; }
+  .plink { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: var(--accent); font: inherit; }
   .plink:hover { text-decoration: underline; }
   .plink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .cell > .feed { flex: none; position: relative; height: 3px; overflow: hidden; background: var(--line); }

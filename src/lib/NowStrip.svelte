@@ -22,6 +22,11 @@
 
   let active = $derived(snap.active);
   let loop = $derived(snap.loopState);
+  /** 실행 중인 작업이 없을 때 다음에 집을 백로그 — fg-run과 같은 순서(우선순위 → task 번호) */
+  const rank = { high: 0, medium: 1, low: 2 };
+  let next = $derived(
+    [...snap.backlog].sort((a, b) => rank[a.priority] - rank[b.priority] || (a.task ?? Infinity) - (b.task ?? Infinity))[0] ?? null,
+  );
 
   function stepClass(stage: string): string {
     if (!active) return "";
@@ -35,7 +40,7 @@
 
 <section class="col">
   <div class="band">
-    <span class="t3 b kicker">지금</span>
+    <span class="t3 b kicker">{!active && next ? "다음" : "지금"}</span>
     {#if !snap.hasForge}
       <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 채워집니다.</span>
     {:else if active}
@@ -58,7 +63,14 @@
         {/if}
       </div>
     {:else}
-      <span class="ink2">진행 중인 작업 없음</span>
+      {#if next}
+        <button class="link tt" onclick={() => onOpen(next.path, `plan · ${num(next.task)}`)} title={next.title}>
+          <span class="num">{num(next.task)}</span>{splitTitle(next.title)[0]}
+        </button>
+        <span class="t3">실행 대기 · 백로그 {snap.backlog.length}건</span>
+      {:else}
+        <span class="ink2">진행 중인 작업 없음 · 백로그 비어 있음</span>
+      {/if}
       <span class="awaiting">
         {#each snap.executed as e (e.path)}
           <button class="link" onclick={() => onOpen(e.path, `plan · ${num(e.task)}`)} title={e.title}>
