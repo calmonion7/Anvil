@@ -17,3 +17,7 @@ dist/
 .svelte-kit/
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# playwright 산출물
+/test-results/
+/playwright-report/

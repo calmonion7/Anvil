@@ -4,14 +4,14 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { marked } from "marked";
   import { onMount } from "svelte";
-  import PlanColumn from "$lib/PlanColumn.svelte";
-  import RunColumn from "$lib/RunColumn.svelte";
+  import NowStrip from "$lib/NowStrip.svelte";
+  import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
   import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
 
   const SELECTED_KEY = "anvil.selected";
-  /** 두 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
+  /** 세로 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
   const LAYOUT_KEY = "anvil.layout";
   const ROLES: Role[] = ["plan", "run"];
 
@@ -20,7 +20,7 @@
   let loadError = $state("");
   let selected = $state<string | null>(null);
   let tabs = $state<DocTab[]>([]);
-  /** null = 보드 탭 */
+  /** null = 문서 오버레이 닫힘 */
   let activeTab = $state<number | null>(null);
   let docHtml = $state("");
   let docError = $state("");
@@ -32,11 +32,11 @@
   let sessions = $state<Record<string, SessionState>>({});
   /** tmux 세션 이름 → 상태줄 래퍼가 남긴 실제 모델·effort */
   let models = $state<Record<string, ModelInfo>>({});
-  /** 계획↔실행(세로 경계) 비율 · 목록↔터미널(가로 경계)에서 목록 영역 비율 · 프로젝트 영역을 레일로 접음 */
+  /** 계획↔실행(세로 경계) 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
-  // 기본 0.26 — 1/3이면 xterm 줄 높이(≈18px) 때문에 900px 창에서 터미널이 30줄에 못 미친다(2026-10-18 사람 결정).
-  let listRatio = $state(0.26);
   let rail = $state(false);
+  /** 건수 칩이 연 목록 팝업 */
+  let listOpen = $state<ListKind | null>(null);
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
@@ -66,6 +66,9 @@
   });
   let hiddenSet = $derived(
     new Set(hiddenItems.filter((h) => h.project === current?.path).map((h) => `${h.source}\n${h.text}`)),
+  );
+  let followupCount = $derived(
+    current ? current.followups.filter((f) => !hiddenSet.has(`${f.sourcePath}\n${f.text}`)).length : 0,
   );
 
   async function fill(role: Role, text: string) {
@@ -112,7 +115,7 @@
   }
 
   /** 바꾼 값만 저장한다 — 접기만 해도 경계 위치가 굳으면 기본값이 바뀌어도 따라가지 않는다. */
-  function saveLayout(patch: { split?: number; listRatio?: number; rail?: boolean }) {
+  function saveLayout(patch: { split?: number; rail?: boolean }) {
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...v, ...patch }));
@@ -123,7 +126,6 @@
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       if (typeof v.split === "number") split = v.split;
-      if (typeof v.listRatio === "number") listRatio = v.listRatio;
       if (typeof v.rail === "boolean") rail = v.rail;
     } catch {}
   }
@@ -207,6 +209,7 @@
     selected = path;
     remember(path);
     activeTab = null;
+    listOpen = null;
   }
 
   async function loadDoc(tab: DocTab) {
@@ -242,23 +245,31 @@
     else if (activeTab > i) activeTab -= 1;
   }
 
-  /** 목록↔터미널(가로 경계)·계획↔실행(세로 경계) 끌기 — 두 경계 모두 본문 격자(.body) 기준 비율 */
-  function drag(kind: "list" | "split", e: PointerEvent) {
+  /** 계획↔실행(세로 경계) 끌기 — 본문 격자(.body) 기준 비율 */
+  function drag(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const body = el.parentElement!;
     const move = (ev: PointerEvent) => {
       const r = body.getBoundingClientRect();
-      if (kind === "list") listRatio = Math.min(Math.max((ev.clientY - r.top) / r.height, 0.15), 0.8);
-      else split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
+      split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
-      saveLayout(kind === "list" ? { listRatio } : { split });
+      saveLayout({ split });
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
+  }
+
+  /** Esc는 맨 위 겹침 하나만 닫는다 — 문서가 목록 팝업 위에 있으면 문서만 닫고 목록으로 돌아간다. */
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    if (activeTab !== null) showTab(null);
+    else if (listOpen) listOpen = null;
+    else return;
+    e.preventDefault();
   }
 
   function toggleRail() {
@@ -266,6 +277,8 @@
     saveLayout({ rail });
   }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="app">
   <aside class="side" class:rail>
@@ -347,28 +360,12 @@
         </nav>
       {/if}
 
-      <!-- 본문 격자: 열 = 계획 | 세로 경계 | 실행, 줄 = 목록 | 가로 경계 | 터미널. 경계 하나가 양쪽을 함께 나눈다. -->
-      <div
-        class="body"
-        style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr); grid-template-rows: minmax(0, {listRatio}fr) 4px minmax(0, {1 - listRatio}fr)"
-      >
-        {#if currentTab}
-          <article class="doc">
-            <div class="t3">{currentTab.rel}</div>
-            {#if docError}
-              <div class="error"><span class="b">✕ 읽기 실패</span> — {docError}</div>
-            {:else}
-              <div class="md">{@html docHtml}</div>
-            {/if}
-          </article>
-        {:else}
-          {#key current.path}
-            <div class="cell top-plan"><PlanColumn snap={current} onOpen={openDoc} {actions} {planBlocked} hidden={hiddenSet} /></div>
-            <div class="cell top-run"><RunColumn snap={current} onOpen={openDoc} {actions} {runBlocked} /></div>
-          {/key}
-        {/if}
-        <div class="hsplit" role="separator" aria-orientation="horizontal" aria-label="목록·터미널 높이 조절" onpointerdown={(e) => drag("list", e)}></div>
-        <div class="vsplit" class:low={!!currentTab} role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={(e) => drag("split", e)}></div>
+      <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
+      {#key current.path}
+        <NowStrip snap={current} onOpen={openDoc} onList={(k) => (listOpen = k)} {followupCount} />
+      {/key}
+      <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
+        <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
         {#if names[current.path]}
           {#each ROLES as r, i (r)}
             {@const s = sessionOf(current.path, r)}
@@ -387,6 +384,23 @@
               />
             </div>
           {/each}
+        {/if}
+        {#if listOpen}
+          <ListPopup kind={listOpen} snap={current} onOpen={openDoc} onClose={() => (listOpen = null)} {actions} {planBlocked} {runBlocked} hidden={hiddenSet} />
+        {/if}
+        {#if currentTab}
+          <div class="doc" role="dialog" aria-label={currentTab.label}>
+            <div class="dh">
+              <span class="t3">{currentTab.rel}</span>
+              <span class="sp"></span>
+              <button class="x on" aria-label="문서 닫기" onclick={() => showTab(null)}>×</button>
+            </div>
+            {#if docError}
+              <div class="error"><span class="b">✕ 읽기 실패</span> — {docError}</div>
+            {:else}
+              <div class="md">{@html docHtml}</div>
+            {/if}
+          </div>
         {/if}
       </div>
       <footer class="status">
@@ -449,15 +463,15 @@
   .tab.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
   .tl { background: none; border: 0; padding: 0 4px; cursor: pointer; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; color: inherit; font-weight: inherit; }
 
-  .body { flex: 1; min-height: 0; display: grid; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); position: relative; }
   /* 칸 내용이 넘쳐도 이웃 칸(경계·터미널 머리줄)을 덮지 않게 자른다 */
   .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .cell > :global(*) { flex: 1; }
-  .top-plan { grid-area: 1 / 1 / 2 / 2; }
-  .top-run { grid-area: 1 / 3 / 2 / 4; }
-  .term-plan { grid-area: 3 / 1 / 4 / 2; }
-  .term-run { grid-area: 3 / 3 / 4 / 4; }
-  .doc { grid-area: 1 / 1 / 2 / 4; min-height: 0; overflow-y: auto; padding: 16px 24px 48px; }
+  .term-plan { grid-area: 1 / 1 / 2 / 2; }
+  .term-run { grid-area: 1 / 3 / 2 / 4; }
+  .doc { position: absolute; inset: 0; z-index: 3; overflow-y: auto; padding: 8px 24px 48px; background: var(--plane); border-top: 1px solid var(--line); }
+  .dh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
+  .x.on { opacity: 1; width: 32px; height: 32px; }
   .md { max-width: 75ch; }
   .md :global(pre) { background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 12px; overflow-x: auto; }
   .md :global(table) { border-collapse: collapse; }
@@ -465,11 +479,7 @@
   .md :global(h1) { font-size: 15px; }
   .md :global(h2), .md :global(h3) { font-size: 13px; }
   .md :global(a) { color: var(--accent); }
-  .hsplit { grid-area: 2 / 1 / 3 / 4; cursor: row-resize; background: var(--line); }
-  .hsplit:hover { background: var(--accent); }
-  .vsplit { grid-area: 1 / 2 / 4 / 3; cursor: col-resize; background: var(--line2); z-index: 1; }
-  /* 문서가 위쪽 전체 폭에 열리면 세로 경계는 터미널 사이에만 남는다 */
-  .vsplit.low { grid-area: 3 / 2 / 4 / 3; background: #2a2a28; }
+  .vsplit { grid-area: 1 / 2 / 2 / 3; cursor: col-resize; background: #2a2a28; z-index: 1; }
   .vsplit:hover { background: var(--accent); }
   .center { flex: 1; display: grid; place-items: center; padding: 24px; }
   .welcome { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 48ch; }
