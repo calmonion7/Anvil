@@ -9,6 +9,7 @@
     blocked,
     onFill,
     onChange,
+    commands,
   }: {
     role: "plan" | "run";
     items: string[];
@@ -16,29 +17,47 @@
     blocked: string | null;
     onFill: (text: string) => void;
     onChange: (items: string[]) => void;
+    /** 자동완성 후보 — 실제 설치된 슬래시 명령(+ 내장 명령) */
+    commands: string[];
   } = $props();
+
+  const MAX = 8;
 
   let adding = $state(false);
   let draft = $state("");
   let input = $state<HTMLInputElement>();
+  /** 강조된 후보 위치 — Enter는 이 후보를 추가한다 */
+  let hi = $state(0);
+  let hints = $derived(
+    commands.filter((c) => !items.includes(c) && c.toLowerCase().includes(draft.trim().toLowerCase().replace(/^\/$/, ""))).slice(0, MAX),
+  );
+  let listId = $derived(`sc-${role}-list`);
 
   async function open() {
     adding = true;
     draft = "/";
+    hi = 0;
     await tick();
     input?.focus();
   }
-  function add() {
-    const t = draft.trim();
+  function add(t = draft.trim()) {
     if (t && t !== "/" && !items.includes(t)) onChange([...items, t]);
     adding = false;
   }
   function key(e: KeyboardEvent) {
+    const h = hints[hi];
     // Esc는 이 입력만 닫는다 — 문서·목록 겹침을 닫는 전역 Esc로 번지지 않게
     if (e.key === "Escape") {
       e.stopPropagation();
       adding = false;
-    } else if (e.key === "Enter") add();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (hints.length) hi = (hi + (e.key === "ArrowDown" ? 1 : -1) + hints.length) % hints.length;
+    } else if (e.key === "Tab" && h) {
+      // Tab = 후보를 입력칸에만 채움(뒤에 인자를 붙일 때)
+      e.preventDefault();
+      draft = h + " ";
+    } else if (e.key === "Enter") add(h ?? draft.trim());
   }
 </script>
 
@@ -50,15 +69,39 @@
     </span>
   {/each}
   {#if adding}
-    <input
-      bind:this={input}
-      bind:value={draft}
-      class="add-in"
-      aria-label="추가할 명령어"
-      placeholder="/forge:fg-…"
-      onkeydown={key}
-      onblur={() => (adding = false)}
-    />
+    <span class="addwrap">
+      <input
+        bind:this={input}
+        bind:value={draft}
+        class="add-in"
+        role="combobox"
+        aria-label="추가할 명령어"
+        aria-expanded={hints.length > 0}
+        aria-controls={listId}
+        aria-activedescendant={hints[hi] ? `${listId}-${hi}` : undefined}
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="/forge:fg-…"
+        onkeydown={key}
+        oninput={() => (hi = 0)}
+        onblur={() => (adding = false)}
+      />
+      {#if hints.length}
+        <ul class="hints" role="listbox" id={listId} aria-label="명령어 후보">
+          {#each hints as h, i (h)}
+            <!-- mousedown에서 막아야 입력칸 blur(닫힘)보다 먼저 고를 수 있다 -->
+            <li
+              id="{listId}-{i}"
+              role="option"
+              aria-selected={i === hi}
+              class:on={i === hi}
+              onmousedown={(e) => { e.preventDefault(); add(h); }}
+              onmouseenter={() => (hi = i)}
+            >{h}</li>
+          {/each}
+        </ul>
+      {/if}
+    </span>
   {:else}
     <button class="plus" aria-label="단축 버튼 추가" title="단축 버튼 추가" onclick={open}>＋</button>
   {/if}
@@ -79,5 +122,10 @@
   .del:hover { color: var(--crit); }
   .plus { width: 24px; height: 24px; padding: 0; border-radius: 12px; border: 1px dashed var(--line); background: none; color: var(--muted); cursor: pointer; }
   .plus:hover { color: var(--ink); border-color: var(--ink2); }
+  .addwrap { position: relative; }
+  .hints { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 24ch; max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+    background: var(--raised); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+  .hints li { padding: 4px 8px; border-radius: 4px; font: 11px "SF Mono", ui-monospace, Menlo, monospace; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+  .hints li.on { background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--ink); }
   .add-in { height: 24px; width: 16ch; padding: 0 8px; border-radius: 12px; border: 1px solid var(--c); background: var(--plane); color: var(--ink); font: 11px "SF Mono", ui-monospace, Menlo, monospace; outline: none; }
 </style>

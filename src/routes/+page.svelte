@@ -19,6 +19,8 @@
   /** 열 머리판 단축 버튼(명령어 목록) — 앱 전체 설정 */
   const SHORTCUT_KEY = "anvil.shortcuts";
   const DEFAULT_SHORTCUTS: Record<Role, string[]> = { plan: ["/forge:fg-ask"], run: ["/forge:fg-next"] };
+  /** Claude 내장 명령 — 파일이 없어 백엔드가 못 읽으니 자동완성 후보에 덧붙인다 */
+  const BUILTIN_COMMANDS = ["/clear", "/compact", "/context", "/model", "/resume"];
   const ROLES: Role[] = ["plan", "run"];
 
   let projects = $state<Snapshot[]>([]);
@@ -88,6 +90,17 @@
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
+  /** 프로젝트 경로 → 설치된 슬래시 명령. 프로젝트마다 처음 한 번만 읽는다. */
+  let slashCache = $state<Record<string, string[]>>({});
+  $effect(() => {
+    const p = current?.path;
+    if (!p || p in slashCache) return;
+    slashCache[p] = [];
+    invoke<string[]>("slash_commands", { project: p })
+      .then((list) => (slashCache[p] = list))
+      .catch(() => {});
+  });
+  let commands = $derived([...BUILTIN_COMMANDS, ...(current ? slashCache[current.path] ?? [] : [])]);
   let currentTab = $derived(activeTab === null ? null : tabs[activeTab] ?? null);
 
   function sessionOf(path: string, role: Role): SessionState | null {
@@ -457,7 +470,7 @@
                   {#key current.path}
                     <NowStrip snap={current} onOpen={openDoc}>
                       {#snippet tools()}
-                        <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} />
+                        <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} {commands} />
                       {/snippet}
                     </NowStrip>
                   {/key}
@@ -469,7 +482,7 @@
                     <div class="pline2">
                       <span class="t3">후속후보 착수는 목록의 「착수」로</span>
                       <span class="sp"></span>
-                      <Shortcuts role="plan" items={shortcuts.plan} blocked={planBlocked} onFill={(t) => fill("plan", t)} onChange={(v) => setShortcuts("plan", v)} />
+                      <Shortcuts role="plan" items={shortcuts.plan} blocked={planBlocked} onFill={(t) => fill("plan", t)} onChange={(v) => setShortcuts("plan", v)} {commands} />
                     </div>
                   </div>
                 {/if}

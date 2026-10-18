@@ -217,7 +217,7 @@ test("단축 버튼: 기본값 · 누르면 그 세션에 채움 · ＋로 추�
   await expect(page.locator(".head").getByRole("button", { name: /다음 단계/ })).toHaveCount(0); // 머리줄에서 옮김
 
   await plan.getByRole("button", { name: "단축 버튼 추가" }).click();
-  await plan.getByRole("textbox", { name: "추가할 명령어" }).fill("/forge:fg-status");
+  await plan.getByRole("combobox", { name: "추가할 명령어" }).fill("/forge:fg-status");
   await page.keyboard.press("Enter");
   const added = plan.getByRole("button", { name: "/forge:fg-status", exact: true });
   await expect(added).toBeVisible();
@@ -234,11 +234,56 @@ test("단축 버튼: 기본값 · 누르면 그 세션에 채움 · ＋로 추�
 
   await plan.getByRole("button", { name: "단축 버튼 추가" }).click();
   await page.keyboard.press("Escape"); // Esc는 입력만 닫는다
-  await expect(plan.getByRole("textbox")).toHaveCount(0);
+  await expect(plan.getByRole("combobox")).toHaveCount(0);
 });
 
 test("세션이 작업 중이면 그 열의 단축 버튼은 꺼진다", async ({ page }) => {
   await emit(page, "sessions", runWorking);
   await expect(page.getByRole("group", { name: "실행 세션 단축 버튼" }).getByRole("button", { name: "/forge:fg-next", exact: true })).toBeDisabled();
   await expect(page.getByRole("group", { name: "계획 세션 단축 버튼" }).getByRole("button", { name: "/forge:fg-ask", exact: true })).toBeEnabled();
+});
+
+test("단축 버튼 추가 자동완성: 실제 명령 목록(+내장) · 거르기 · 이미 있는 건 제외 · ↓Enter · Tab 채우고 인자 · 클릭", async ({ page }) => {
+  const run = page.getByRole("group", { name: "실행 세션 단축 버튼" });
+  const box = run.getByRole("combobox", { name: "추가할 명령어" });
+  const opts = run.getByRole("option");
+
+  await run.getByRole("button", { name: "단축 버튼 추가" }).click();
+  await expect(opts.first()).toBeVisible(); // "/"만 있어도 후보가 뜬다
+  await expect(run.getByRole("option", { name: "/forge:fg-next", exact: true })).toHaveCount(0); // 이미 있음
+
+  await box.fill("eli");
+  await expect(opts).toHaveText(["/eli5"]); // 백엔드가 읽어 온 사용자 스킬
+  await box.fill("cle");
+  await expect(opts).toHaveText(["/clear"]); // 내장 명령
+  await box.fill("/lea");
+  await expect(opts).toHaveCount(0); // 부분 문자열이 아니면 없음
+  await box.fill("learn"); // "lea"는 /clear에도 들어 있다
+  await expect(opts).toHaveText(["/forge:fg-learn"]);
+  await page.keyboard.press("Enter");
+  await expect(run.getByRole("button", { name: "/forge:fg-learn", exact: true })).toBeVisible();
+
+  await run.getByRole("button", { name: "단축 버튼 추가" }).click();
+  await box.fill("fg-run");
+  await page.keyboard.press("Tab");
+  await expect(box).toHaveValue("/forge:fg-run ");
+  await box.fill("/forge:fg-run #12");
+  await expect(opts).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(run.getByRole("button", { name: "/forge:fg-run #12", exact: true })).toBeVisible();
+
+  await run.getByRole("button", { name: "단축 버튼 추가" }).click();
+  await box.fill("doc");
+  await run.getByRole("option", { name: "/forge:fg-doctor" }).click();
+  await expect(run.getByRole("button", { name: "/forge:fg-doctor", exact: true })).toBeVisible();
+});
+
+test("명령 목록은 프로젝트마다 처음 한 번만 읽는다", async ({ page }) => {
+  const count = () => page.evaluate(() => (window as any).__calls.filter((c: any) => c.cmd === "slash_commands").length);
+  await expect.poll(count).toBe(1);
+  await page.getByRole("button", { name: /^empty main/ }).click();
+  await expect.poll(count).toBe(2);
+  await page.getByRole("button", { name: /^alpha main/ }).click();
+  await page.waitForTimeout(200);
+  expect(await count()).toBe(2); // 다시 와도 또 읽지 않는다
 });
