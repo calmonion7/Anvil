@@ -1,16 +1,9 @@
-/* 토큰은 docs/board-mockup.html 정본에서 그대로 가져왔다. 배색은 macOS 설정을 따른다. */
+/* 토큰은 docs/board-mockup.html 정본의 어두운 배색. 흐름 애니메이션이 잘 보이도록 어두움으로 고정한다(2026-10-18 사람 결정). */
 :root {
-  --plane: #f9f9f7; --surface: #fcfcfb; --raised: #ffffff; --line: rgba(11,11,11,.10); --line2: rgba(11,11,11,.06);
-  --ink: #0b0b0b; --ink2: #52514e; --muted: #6f6d68; --accent: #2a78d6; --accent-wash: rgba(42,120,214,.10);
-  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --warn-wash: rgba(250,178,25,.16);
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --plane: #0d0d0d; --surface: #1a1a19; --raised: #222220; --line: rgba(255,255,255,.10); --line2: rgba(255,255,255,.06);
-    --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --accent: #3987e5; --accent-wash: rgba(57,135,229,.14);
-    --warn-wash: rgba(250,178,25,.12);
-  }
+  --plane: #0d0d0d; --surface: #1a1a19; --raised: #222220; --line: rgba(255,255,255,.10); --line2: rgba(255,255,255,.06);
+  --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781; --accent: #3987e5; --accent-wash: rgba(57,135,229,.14);
+  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --warn-wash: rgba(250,178,25,.12);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }

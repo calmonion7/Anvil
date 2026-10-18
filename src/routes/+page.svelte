@@ -5,6 +5,7 @@
   import { marked } from "marked";
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
+  import FlowBoard from "$lib/FlowBoard.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
@@ -362,7 +363,8 @@
 
       <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
       {#key current.path}
-        <NowStrip snap={current} onOpen={openDoc} onList={(k) => (listOpen = k)} {followupCount} />
+        <NowStrip snap={current} onOpen={openDoc} />
+        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} />
       {/key}
       <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
