@@ -1,19 +1,20 @@
 <script lang="ts">
-  import type { Snapshot, Stage, CheckResult, BoardActions } from "./types";
-  import { splitTitle, priorityLabel } from "./format";
+  import type { Snapshot, Stage, CheckResult } from "./types";
+  import type { ListKind } from "./ListPopup.svelte";
+  import { splitTitle } from "./format";
 
-  /** 실행 열 위쪽 — 진행 영역(「지금」 띠 · 루프 줄 · 백로그). '실행'은 실행 세션에 채운다. */
+  /** 위쪽 고정 띠 — 진행 영역(「지금」 띠 · 루프 줄) + 목록 팝업을 여는 건수 칩 */
   let {
     snap,
     onOpen,
-    actions,
-    runBlocked = null,
+    onList,
+    followupCount,
   }: {
     snap: Snapshot;
     onOpen: (rel: string, label: string) => void;
-    actions: BoardActions;
-    /** 실행 세션이 작업 중이면 그 이유(`#N 실행 중`) — '실행'을 끈다 */
-    runBlocked?: string | null;
+    onList: (kind: ListKind) => void;
+    /** 숨긴 항목을 뺀 후속후보 수 */
+    followupCount: number;
   } = $props();
 
   const steps: { stage: Stage | "plan"; label: string }[] = [
@@ -89,30 +90,15 @@
     </div>
   {/if}
 
-  <div class="ch"><span class="b">백로그</span><span class="ct">{snap.backlog.length} · fg-run 순서</span></div>
-  <div class="list">
-    {#each snap.backlog as p (p.path)}
-      <div class="item">
-        <button class="open" onclick={() => onOpen(p.path, `plan · ${num(p.task)}`)} title={p.title}>
-          <span class="tt"><span class="num">{num(p.task)}</span>{p.title}</span>
-          <span class="mt">
-            <span class:pri-h={p.priority === "high"}>{priorityLabel[p.priority]}</span>{p.part ? ` · part ${p.part}` : ""}{p.fromLoop ? " · 루프 생성" : ""}
-          </span>
-        </button>
-        <button class="btn sm" disabled={!!runBlocked} title={runBlocked ?? "실행 세션 입력창에 /forge:fg-run을 채웁니다"} onclick={() => actions.run(p)}>실행</button>
-      </div>
-    {:else}
-      <div class="emptycell">
-        <span class="t3">비어 있음</span>
-        <span class="ink2">대기 중인 계획이 없습니다.</span>
-      </div>
-    {/each}
+  <div class="chips">
+    <button class="cnt" onclick={() => onList("followups")}>후속후보 <span class="ct">{followupCount}</span></button>
+    <button class="cnt" onclick={() => onList("done")}>최근 완료 <span class="ct">{snap.doneTotal}</span></button>
+    <button class="cnt" onclick={() => onList("backlog")}>백로그 <span class="ct">{snap.backlog.length}</span></button>
   </div>
 </section>
 
 <style>
-  /* 목록 영역이 띠·루프 줄보다 낮으면 열 전체가 스크롤한다(목록은 최소 72px) */
-  .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+  .col { min-width: 0; display: flex; flex-direction: column; }
   .ink2 { color: var(--ink2); }
   .kicker { letter-spacing: .04em; flex: none; }
   .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -145,14 +131,9 @@
   .ck.fail .i { color: var(--crit); }
   .ck.waiting .i { color: var(--warn); }
 
-  .ch { flex: none; display: flex; align-items: baseline; gap: 8px; padding: 12px 20px 4px; }
-  .ct { font-size: 11px; color: var(--muted); }
-  .list { flex: 1; min-height: 72px; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
-  .list > * { flex: none; }
-  .item { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line2); border-radius: 6px; }
-  .item:hover { border-color: var(--line); }
-  .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: inherit; }
-  .mt { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .pri-h { color: var(--ink); font-weight: 600; }
-  .emptycell { padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px dashed var(--line); border-radius: 6px; }
+  .chips { flex: none; display: flex; gap: 8px; padding: 8px 16px; }
+  .cnt { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); cursor: pointer; }
+  .cnt:hover { color: var(--ink); border-color: var(--ink2); }
+  .cnt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .ct { font-size: 11px; color: var(--ink); font-weight: 600; }
 </style>
