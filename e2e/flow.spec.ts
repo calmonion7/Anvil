@@ -4,6 +4,8 @@ import { mockIpc, alpha } from "./mock-ipc";
 // 흐름도(FlowBoard): 노드 건수 · 세션 상태 → 흐르는 화살표 · .forge 변화 → 펄스+로그 · 동작 줄이기 · 어두움 고정
 
 const edge = (page: Page, e: string) => page.locator(`.edge[data-edge="${e}"]`);
+/** 노드 ↔ 터미널 열 머리 세로 화살표(FlowLinks) */
+const link = (page: Page, id: string) => page.locator(`[data-link="${id}"]`);
 const emit = (page: Page, event: string, payload: unknown) =>
   page.evaluate(([ev, p]) => (window as any).__emit(ev, p), [event, payload] as const);
 const runWorking = { "/p/alpha-run": { state: "working", sessionId: null, alive: true } };
@@ -21,37 +23,37 @@ test("노드 건수는 스냅샷 값", async ({ page }) => {
   await expect(page.locator('[data-node="run"]')).not.toContainText("#9"); // 「지금」 띠와 중복이라 뺀다
 });
 
-test("실행 세션 작업 중 → 실행 화살표가 흐르고, 종료되면 멈춤", async ({ page }) => {
-  await expect(edge(page, "e3")).toHaveAttribute("data-flow", "idle");
+test("실행 세션 작업 중 → 실행 쪽 화살표(백로그→실행, 실행 터미널→완료)가 흐르고, 종료되면 멈춤", async ({ page }) => {
+  await expect(link(page, "r-out")).toHaveAttribute("data-flow", "idle");
   await emit(page, "sessions", runWorking);
   await expect(edge(page, "e2")).toHaveAttribute("data-flow", "active");
-  await expect(edge(page, "e3")).toHaveAttribute("data-flow", "active");
-  await expect(edge(page, "e1")).toHaveAttribute("data-flow", "idle");
-  const anim = await edge(page, "e3").locator(".dots").evaluate((el) => getComputedStyle(el).animationName);
+  await expect(link(page, "r-out")).toHaveAttribute("data-flow", "active");
+  await expect(link(page, "p-out")).toHaveAttribute("data-flow", "idle");
+  const anim = await link(page, "r-out").locator(".dots").evaluate((el) => getComputedStyle(el).animationName);
   expect(anim).not.toBe("none");
 
   await emit(page, "sessions", { "/p/alpha-run": { state: "ended", sessionId: null, alive: false } });
-  await expect(edge(page, "e3")).toHaveAttribute("data-flow", "idle");
+  await expect(link(page, "r-out")).toHaveAttribute("data-flow", "idle");
 });
 
-test("백로그가 늘면 계획→백로그 펄스 한 번", async ({ page }) => {
-  await expect(edge(page, "e1").locator(".pulse")).toHaveCount(0);
+test("백로그가 늘면 계획 터미널→백로그 펄스 한 번", async ({ page }) => {
+  await expect(link(page, "p-out").locator(".pulse")).toHaveCount(0);
   const more = { ...alpha, backlog: [...alpha.backlog, { ...alpha.backlog[0], task: 12, slug: "b12", path: ".forge/backlog/b12.md" }] };
   await emit(page, "snapshot", more);
   await expect(page.locator('[data-node="backlog"]')).toHaveText(/백로그 3$/);
-  await expect(edge(page, "e1").locator(".pulse")).toHaveCount(1);
+  await expect(link(page, "p-out").locator(".pulse")).toHaveCount(1);
 });
 
-test("완료가 늘면 실행→완료 펄스", async ({ page }) => {
+test("완료가 늘면 실행 터미널→완료 펄스", async ({ page }) => {
   await emit(page, "snapshot", { ...alpha, doneTotal: 2 });
-  await expect(edge(page, "e3").locator(".pulse")).toHaveCount(1);
+  await expect(link(page, "r-out").locator(".pulse")).toHaveCount(1);
 });
 
 test("동작 줄이기 설정이면 애니메이션 없음", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await emit(page, "sessions", runWorking);
-  await expect(edge(page, "e3")).toHaveAttribute("data-flow", "active");
-  const anim = await edge(page, "e3").locator(".dots").evaluate((el) => getComputedStyle(el).animationName);
+  await expect(link(page, "r-out")).toHaveAttribute("data-flow", "active");
+  const anim = await link(page, "r-out").locator(".dots").evaluate((el) => getComputedStyle(el).animationName);
   expect(anim).toBe("none");
 });
 
@@ -114,4 +116,26 @@ test("백로그도 비면 실행 열 머리에 '백로그 비어 있음'", async
 test("계획 열 머리의 후속후보 링크는 후속후보 목록을 연다", async ({ page }) => {
   await page.locator(".info-plan").getByRole("button", { name: "후속후보 2건 보기" }).click();
   await expect(page.getByRole("dialog", { name: "후속후보" })).toBeVisible();
+});
+
+test("세션 노드 ↓ 터미널 ↑ 다음 노드 — 직행 가로 화살표는 없음, 귀환 루프는 줄 위", async ({ page }) => {
+  await expect(page.locator('.edge[data-edge="e1"], .edge[data-edge="e3"]')).toHaveCount(0);
+  const box = async (sel: string) => (await page.locator(sel).first().boundingBox())!;
+  const [plan, backlog, run, done, ip, ir] = await Promise.all(
+    ['[data-node="plan"]', '[data-node="backlog"]', '[data-node="run"]', '[data-node="done"]', ".info-plan", ".info-run"].map(box),
+  );
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThanOrEqual(3);
+  // 각 화살표: 위쪽 끝은 노드 아래, 아래쪽 끝은 열 머리 위, 가로 위치는 노드 가운데
+  for (const [id, node, col] of [["p-in", plan, ip], ["p-out", backlog, ip], ["r-in", run, ir], ["r-out", done, ir]] as const) {
+    const b = (await link(page, id).locator(".base").boundingBox())!;
+    near(b.y, node.y + node.height);
+    near(b.y + b.height, col.y);
+    expect(b.x).toBeGreaterThanOrEqual(Math.min(node.x, col.x) - 4);
+    expect(b.x + b.width).toBeLessThanOrEqual(Math.max(node.x + node.width, col.x + col.width) + 4);
+  }
+  await emit(page, "sessions", { "/p/alpha-plan": { state: "working", sessionId: null, alive: true } });
+  await expect(link(page, "p-in")).toHaveAttribute("data-flow", "active");
+  await expect(link(page, "r-in")).toHaveAttribute("data-flow", "idle");
+  const loop = await box(".loopback");
+  expect(loop.y + loop.height).toBeLessThanOrEqual(plan.y + 1);
 });

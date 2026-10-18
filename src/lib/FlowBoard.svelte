@@ -11,21 +11,24 @@
     run,
     onList,
     followupCount,
+    out = $bindable(),
   }: {
     snap: Snapshot;
     plan: SessionState | null;
     run: SessionState | null;
     onList: (kind: ListKind) => void;
     followupCount: number;
+    /** 터미널을 거쳐 나가는 펄스(계획 터미널→백로그 · 실행 터미널→최근 완료) — FlowLinks가 그린다 */
+    out: { pOut: number; rOut: number };
   } = $props();
 
-  type Edge = "e1" | "e2" | "e3" | "e4" | "e5";
+  type Edge = "e2" | "e4" | "e5";
 
-  let pulses = $state<Record<Edge, number>>({ e1: 0, e2: 0, e3: 0, e4: 0, e5: 0 });
+  let pulses = $state<Record<Edge, number>>({ e2: 0, e4: 0, e5: 0 });
 
   const working = (s: SessionState | null) => !!s?.alive && s.state === "working";
   const waiting = (s: SessionState | null) => !!s?.alive && s.state === "waiting";
-  let flow = $derived<Record<Edge, boolean>>({ e1: working(plan), e2: working(run), e3: working(run), e4: false, e5: false });
+  let flow = $derived<Record<Edge, boolean>>({ e2: working(run), e4: false, e5: false });
 
   const pulse = (e: Edge) => (pulses[e] += 1);
 
@@ -41,10 +44,10 @@
     const p = prev;
     prev = cur;
     if (!p) return;
-    if (cur.backlog > p.backlog) pulse("e1");
+    if (cur.backlog > p.backlog) out.pOut += 1;
     if (cur.active && cur.active !== p.active) pulse("e2");
     else if (cur.backlog < p.backlog) pulse("e2");
-    if (cur.done > p.done) pulse("e3");
+    if (cur.done > p.done) out.rOut += 1;
     if (cur.follow > p.follow) pulse("e4");
     else if (cur.follow < p.follow) pulse("e5");
   });
@@ -63,18 +66,20 @@
     <div class="node sess plan" class:wait={waiting(plan)} data-node="plan">
       <span class="role">계획 세션</span><span class="st">{stateLabel(plan)}</span>
     </div>
-    {@render edge("e1")}
+    <!-- 계획 세션 → 백로그는 계획 터미널을 거친다(FlowLinks 세로 화살표) -->
+    <span class="via" aria-hidden="true"></span>
     <button class="node cnt backlog" data-node="backlog" onclick={() => onList("backlog")}>백로그 <span class="ct">{snap.backlog.length}</span></button>
     {@render edge("e2")}
     <div class="node sess run" class:wait={waiting(run)} data-node="run">
       <span class="role">실행 세션</span>
       <span class="st">{stateLabel(run)}</span>
     </div>
-    {@render edge("e3")}
+    <!-- 실행 세션 → 최근 완료는 실행 터미널을 거친다 -->
+    <span class="via" aria-hidden="true"></span>
     <button class="node cnt done" data-node="done" onclick={() => onList("done")}>최근 완료 <span class="ct">{snap.doneTotal}</span></button>
     {@render edge("e4")}
     <button class="node cnt follow" data-node="followups" onclick={() => onList("followups")}>후속후보 <span class="ct">{followupCount}</span></button>
-    <!-- 귀환 루프: 후속후보 → 계획 세션(착수하면 다시 계획으로) -->
+    <!-- 귀환 루프(줄 위): 후속후보 → 계획 세션(착수하면 다시 계획으로) -->
     <span class="loopback" data-edge="e5" aria-hidden="true" title="후속후보는 계획 세션에서 착수합니다">
       {#key pulses.e5}{#if pulses.e5}<span class="pulse back"></span>{/if}{/key}
     </span>
@@ -82,8 +87,9 @@
 </section>
 
 <style>
-  .flow { flex: none; margin: 4px 16px 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-  .row { position: relative; display: flex; align-items: center; min-width: 0; padding-bottom: 16px; }
+  .flow { flex: none; margin: 4px 16px 16px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .row { position: relative; display: flex; align-items: center; min-width: 0; padding-top: 16px; }
+  .via { flex: 1; min-width: 24px; }
   .node { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--raised); color: var(--ink2); font: inherit; font-size: 11px; white-space: nowrap; }
   .sess .role { color: var(--ink); font-weight: 600; }
   .sess .st { color: var(--muted); }
@@ -95,10 +101,10 @@
   .done { border-color: var(--good); }
   .ct { color: var(--ink); font-weight: 600; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
   .node.wait { animation: breathe 1.6s ease-in-out infinite; }
-  /* 행 아래 ㄷ자 선 — 오른쪽(후속후보) 아래에서 왼쪽(계획 세션) 아래로, 끝은 위로 향한 화살촉 */
-  .loopback { position: absolute; left: 48px; right: 48px; bottom: 2px; height: 14px; border: 1.5px dashed var(--line); border-top: 0; border-radius: 0 0 6px 6px; }
-  .loopback::after { content: ""; position: absolute; left: -5.5px; top: -6px; border: 4px solid transparent; border-bottom: 6px solid var(--muted); border-top: 0; }
-  .pulse.back { top: auto; bottom: -5px; left: auto; right: 0; animation: travel-back 1.2s ease-out forwards; }
+  /* 행 위 ∩자 선 — 오른쪽(후속후보) 위에서 왼쪽(계획 세션) 위로, 끝은 아래로 향한 화살촉 */
+  .loopback { position: absolute; left: 48px; right: 48px; top: 2px; height: 14px; border: 1.5px dashed var(--line); border-bottom: 0; border-radius: 6px 6px 0 0; }
+  .loopback::after { content: ""; position: absolute; left: -5.5px; bottom: -6px; border: 4px solid transparent; border-top: 6px solid var(--muted); border-bottom: 0; }
+  .pulse.back { top: -5px; left: auto; right: 0; animation: travel-back 1.2s ease-out forwards; }
   @keyframes travel-back { from { right: 0; opacity: 1; } to { right: calc(100% - 8px); opacity: 0; } }
 
   /* 화살표: 기본은 흐린 선, 흐르는 중이면 점이 오른쪽으로 이동 */
@@ -106,7 +112,6 @@
   .edge::after { content: ""; position: absolute; right: -1px; top: -3px; border: 4px solid transparent; border-left: 6px solid var(--line); border-right: 0; }
   .dots { position: absolute; inset: 0; opacity: 0; background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 12px); background-size: 12px 2px; }
   .edge[data-flow="active"] .dots { opacity: 1; animation: march .6s linear infinite; }
-  .edge[data-edge="e1"] .dots { background-image: repeating-linear-gradient(90deg, var(--warn) 0 4px, transparent 4px 12px); }
   .pulse { position: absolute; top: -3px; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 8px var(--accent); animation: travel .9s ease-out forwards; }
 
   @keyframes march { to { background-position: 12px 0; } }

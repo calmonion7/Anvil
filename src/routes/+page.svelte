@@ -6,6 +6,7 @@
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
   import FlowBoard from "$lib/FlowBoard.svelte";
+  import FlowLinks from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
@@ -42,6 +43,9 @@
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
+  /** 터미널을 거쳐 나가는 펄스 — FlowBoard가 올리고 FlowLinks가 그린다 */
+  let outPulses = $state({ pOut: 0, rOut: 0 });
+  let mainEl = $state<HTMLElement>();
   let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
   /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
@@ -321,7 +325,7 @@
     {/if}
   </aside>
 
-  <section class="main">
+  <section class="main" bind:this={mainEl}>
     {#if loading}
       <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
     {:else if loadError}
@@ -366,8 +370,15 @@
 
       <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
       {#key current.path}
-        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} />
+        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} bind:out={outPulses} />
       {/key}
+      <FlowLinks
+        root={mainEl}
+        planWorking={sessionOf(current.path, "plan")?.state === "working" && !!sessionOf(current.path, "plan")?.alive}
+        runWorking={sessionOf(current.path, "run")?.state === "working" && !!sessionOf(current.path, "run")?.alive}
+        pulses={outPulses}
+        deps={[current.path, split, rail, current.active?.task, listOpen]}
+      />
       <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
         {#if names[current.path]}
@@ -475,7 +486,7 @@
   .skels { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
   .skels.wide { width: 360px; }
 
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
   .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; flex-wrap: wrap; }
   .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line); color: var(--ink2); font-size: 11px; white-space: nowrap; }
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
