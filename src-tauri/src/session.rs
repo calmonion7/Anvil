@@ -441,6 +441,19 @@ mod tests {
         assert_eq!(sh_quote("[Anvil] [it's] PLAN"), r"'[Anvil] [it'\''s] PLAN'");
     }
 
+    /// Finder에서 띄운 앱은 PATH·LANG이 없다 — tmux 명령은 늘 로그인 PATH와 UTF-8 로캘, `-u`를 실어야
+    /// claude·tmux를 찾고 한글이 `_`로 바뀌지 않는다(#2 실측).
+    #[test]
+    fn tmux_command_carries_path_lang_and_utf8() {
+        let c = tmux(Path::new("/tmp/anvil-tmux.conf"));
+        let args: Vec<_> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(&args[..3], ["-u", "-L", SOCKET]);
+        let env = |k: &str| c.get_envs().find(|(n, _)| *n == k).and_then(|(_, v)| v).map(|v| v.to_string_lossy().into_owned());
+        let path = env("PATH").expect("PATH 없음");
+        assert!(path.contains("/opt/homebrew/bin") && path.contains("/.local/bin"), "{path}");
+        assert!(env("LANG").expect("LANG 없음").contains("UTF-8"));
+    }
+
     /// 상태줄 래퍼: 모델·effort(객체/옛 문자열)를 기록하고, 원래 상태줄 명령에 같은 입력을 넘겨 출력을 그대로 낸다.
     #[test]
     fn statusline_wrapper_records_model_and_passes_through() {
