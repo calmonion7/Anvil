@@ -8,8 +8,9 @@
   import FlowBoard from "$lib/FlowBoard.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
+  import { splitTitle } from "$lib/format";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
-  import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
+  import type { Snapshot, PlanCard, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
 
   const SELECTED_KEY = "anvil.selected";
   /** 세로 경계 위치와 프로젝트 영역 접힘 — 앱 전체 설정 */
@@ -47,6 +48,10 @@
   let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
+  /** 계획 열 머리 — task 번호가 가장 큰 백로그(가장 최근에 쌓은 계획) */
+  let latestPlan = $derived(
+    current?.backlog.reduce<PlanCard | null>((a, b) => (a === null || (b.task ?? -1) > (a.task ?? -1) ? b : a), null) ?? null,
+  );
   let currentTab = $derived(activeTab === null ? null : tabs[activeTab] ?? null);
 
   function sessionOf(path: string, role: Role): SessionState | null {
@@ -366,8 +371,7 @@
 
       <!-- 위쪽 고정 띠(내용 높이) 아래 전부 터미널. 목록 팝업·문서는 터미널 영역 위에 겹친다(문서가 맨 위). -->
       {#key current.path}
-        <NowStrip snap={current} onOpen={openDoc} />
-        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} fill={lastFill} />
+        <FlowBoard snap={current} plan={sessionOf(current.path, "plan")} run={sessionOf(current.path, "run")} onList={(k) => (listOpen = k)} {followupCount} />
       {/key}
       <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
@@ -375,6 +379,26 @@
           {#each ROLES as r, i (r)}
             {@const s = sessionOf(current.path, r)}
             {@const n = names[current.path][i]}
+            <!-- 열 머리: 계획 = 최근 쌓은 계획, 실행 = 지금 처리 중인 작업 → 계획·실행을 나란히 본다.
+                 같은 grid 행이라 높이가 같이 맞춰져 아래 터미널 머리줄이 나란하다. -->
+            <div class="info info-{r}">
+                {#if r === "run"}
+                  {#key current.path}<NowStrip snap={current} onOpen={openDoc} />{/key}
+                {:else}
+                  {@const p = latestPlan}
+                  <div class="pband">
+                    <span class="t3 b kicker">계획</span>
+                    {#if p}
+                      <button class="plink tt" title={p.title} onclick={() => openDoc(p.path, `plan · ${p.task === null ? "#—" : `#${p.task}`}`)}>
+                        <span class="num">{p.task === null ? "#—" : `#${p.task}`}</span>{splitTitle(p.title)[0]}
+                      </button>
+                    {:else}
+                      <span class="ink2 tt">쌓인 계획 없음 — 계획 세션에서 fg-ask로 시작합니다</span>
+                    {/if}
+                    <div class="pline2 t3">{p ? "최근 쌓은 계획 · " : ""}백로그 {current.backlog.length}건 대기</div>
+                  </div>
+                {/if}
+            </div>
             <div class="cell term-{r}">
               <!-- 유입 띠: 이 터미널은 위 흐름도의 같은 색 노드·보드 버튼에서 입력을 받는다 -->
               <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title="보드 버튼이 이 세션 입력창에 명령을 채웁니다">
@@ -472,11 +496,23 @@
   .tab.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
   .tl { background: none; border: 0; padding: 0 4px; cursor: pointer; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; color: inherit; font-weight: inherit; }
 
-  .body { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); position: relative; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); position: relative; }
   /* 칸 내용이 넘쳐도 이웃 칸(경계·터미널 머리줄)을 덮지 않게 자른다 */
   .cell { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .cell > :global(*) { flex: 1; }
-  .term-plan { grid-area: 1 / 1 / 2 / 2; }
+  .term-plan { grid-area: 2 / 1 / 3 / 2; }
+  .info { min-width: 0; display: flex; flex-direction: column; }
+  .info > :global(*) { flex: 1; }
+  .info-plan { grid-area: 1 / 1 / 2 / 2; }
+  .info-run { grid-area: 1 / 3 / 2 / 4; }
+  .info-run :global(.band) { flex: 1; }
+  .pband { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; }
+  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; padding-bottom: 2px; }
+  .kicker { letter-spacing: .04em; flex: none; }
+  .tt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plink { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; flex: 1; }
+  .plink:hover { text-decoration: underline; }
+  .plink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .cell > .feed { flex: none; position: relative; height: 3px; overflow: hidden; background: var(--line); }
   .feed.plan { --c: var(--warn); }
   .feed.run { --c: var(--accent); }
@@ -489,7 +525,7 @@
     .feed[data-flow="active"], .fpulse { animation: none; }
     .fpulse { display: none; }
   }
-  .term-run { grid-area: 1 / 3 / 2 / 4; }
+  .term-run { grid-area: 2 / 3 / 3 / 4; }
   .doc { position: absolute; inset: 0; z-index: 3; overflow-y: auto; padding: 8px 24px 48px; background: var(--plane); border-top: 1px solid var(--line); }
   .dh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
   .x.on { opacity: 1; width: 32px; height: 32px; }
@@ -500,7 +536,7 @@
   .md :global(h1) { font-size: 15px; }
   .md :global(h2), .md :global(h3) { font-size: 13px; }
   .md :global(a) { color: var(--accent); }
-  .vsplit { grid-area: 1 / 2 / 2 / 3; cursor: col-resize; background: #2a2a28; z-index: 1; }
+  .vsplit { grid-area: 1 / 2 / 3 / 3; cursor: col-resize; background: #2a2a28; z-index: 1; }
   .vsplit:hover { background: var(--accent); }
   .center { flex: 1; display: grid; place-items: center; padding: 24px; }
   .welcome { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 48ch; }

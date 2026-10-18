@@ -4,42 +4,32 @@
   import { stateLabel } from "./sessions";
 
   /** 정보 흐름도 — 계획 세션 → 백로그 → 실행 세션 → 완료 → 후속후보 ↺ 계획.
-      세션이 작업 중이면 나가는 화살표에 점이 흐르고, .forge 변화는 해당 화살표에 펄스 한 번 + 로그 한 줄. */
+      세션이 작업 중이면 나가는 화살표에 점이 흐르고, .forge 변화는 해당 화살표에 펄스 한 번. */
   let {
     snap,
     plan,
     run,
     onList,
     followupCount,
-    fill,
   }: {
     snap: Snapshot;
     plan: SessionState | null;
     run: SessionState | null;
     onList: (kind: ListKind) => void;
     followupCount: number;
-    /** 보드 버튼이 세션 입력창에 마지막으로 채운 명령(n은 횟수) */
-    fill: { role: "plan" | "run"; text: string; n: number };
   } = $props();
 
   type Edge = "e1" | "e2" | "e3" | "e4" | "e5";
-  const LOG_MAX = 50;
 
   let pulses = $state<Record<Edge, number>>({ e1: 0, e2: 0, e3: 0, e4: 0, e5: 0 });
-  let log = $state<{ id: number; t: string; who: string; text: string }[]>([]);
-  let seq = 0;
 
   const working = (s: SessionState | null) => !!s?.alive && s.state === "working";
   const waiting = (s: SessionState | null) => !!s?.alive && s.state === "waiting";
   let flow = $derived<Record<Edge, boolean>>({ e1: working(plan), e2: working(run), e3: working(run), e4: false, e5: false });
 
-  function push(who: string, text: string, edge?: Edge) {
-    const t = new Date().toTimeString().slice(0, 8);
-    log = [...log, { id: ++seq, t, who, text }].slice(-LOG_MAX);
-    if (edge) pulses[edge] += 1;
-  }
+  const pulse = (e: Edge) => (pulses[e] += 1);
 
-  // 직전 값과 비교해 변화만 남긴다. 첫 값은 기준선이라 기록하지 않는다.
+  // 직전 값과 비교해 변화만 펄스로 보인다. 첫 값은 기준선이다.
   let prev: { backlog: number; done: number; follow: number; active: string | null } | null = null;
   $effect(() => {
     const cur = {
@@ -51,34 +41,14 @@
     const p = prev;
     prev = cur;
     if (!p) return;
-    if (cur.backlog > p.backlog) push("계획", `백로그 +${cur.backlog - p.backlog}`, "e1");
-    if (cur.active && cur.active !== p.active) push("실행", `#${cur.active} 활성 작업으로`, "e2");
-    else if (cur.backlog < p.backlog) push("실행", `백로그에서 ${p.backlog - cur.backlog}건 꺼냄`, "e2");
-    if (cur.done > p.done) push("완료", `봉인 +${cur.done - p.done}`, "e3");
-    if (cur.follow > p.follow) push("회고", `후속후보 +${cur.follow - p.follow}`, "e4");
-    else if (cur.follow < p.follow) push("계획", `후속후보 ${p.follow - cur.follow}건 착수·정리`, "e5");
+    if (cur.backlog > p.backlog) pulse("e1");
+    if (cur.active && cur.active !== p.active) pulse("e2");
+    else if (cur.backlog < p.backlog) pulse("e2");
+    if (cur.done > p.done) pulse("e3");
+    if (cur.follow > p.follow) pulse("e4");
+    else if (cur.follow < p.follow) pulse("e5");
   });
 
-  let prevFill = 0;
-  $effect(() => {
-    if (fill.n > prevFill) push(fill.role === "plan" ? "계획 세션" : "실행 세션", `← ${fill.text}`, fill.role === "plan" ? "e5" : undefined);
-    prevFill = fill.n;
-  });
-
-  let prevPlan: string | undefined;
-  let prevRun: string | undefined;
-  $effect(() => {
-    const v = stateLabel(plan);
-    if (prevPlan !== undefined && v !== prevPlan) push("계획 세션", v);
-    prevPlan = v;
-  });
-  $effect(() => {
-    const v = stateLabel(run);
-    if (prevRun !== undefined && v !== prevRun) push("실행 세션", v);
-    prevRun = v;
-  });
-
-  let shown = $derived(log.slice(-3).reverse());
 </script>
 
 {#snippet edge(e: Edge)}
@@ -109,13 +79,6 @@
       {#key pulses.e5}{#if pulses.e5}<span class="pulse back"></span>{/if}{/key}
     </span>
   </div>
-  {#if shown.length}
-    <ol class="log" aria-label="세션 로그">
-      {#each shown as l (l.id)}
-        <li><span class="tm">{l.t}</span><span class="who">{l.who}</span><span class="tx">{l.text}</span></li>
-      {/each}
-    </ol>
-  {/if}
 </section>
 
 <style>
@@ -130,7 +93,7 @@
   .cnt:hover { color: var(--ink); }
   .cnt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .done { border-color: var(--good); }
-  .ct { color: var(--ink); font-weight: 600; }
+  .ct { color: var(--ink); font-weight: 600; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
   .node.wait { animation: breathe 1.6s ease-in-out infinite; }
   /* 행 아래 ㄷ자 선 — 오른쪽(후속후보) 아래에서 왼쪽(계획 세션) 아래로, 끝은 위로 향한 화살촉 */
   .loopback { position: absolute; left: 48px; right: 48px; bottom: 2px; height: 14px; border: 1.5px dashed var(--line); border-top: 0; border-radius: 0 0 6px 6px; }
@@ -155,10 +118,4 @@
     .pulse { display: none; }
   }
 
-  .log { list-style: none; margin: 8px 0 0; padding: 0; font-size: 11px; color: var(--ink2); }
-  .log li { display: flex; gap: 12px; white-space: nowrap; overflow: hidden; }
-  .tm, .ct { font-family: "SF Mono", ui-monospace, Menlo, monospace; }
-  .tm { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .who { color: var(--accent); min-width: 8ch; }
-  .tx { overflow: hidden; text-overflow: ellipsis; }
 </style>
