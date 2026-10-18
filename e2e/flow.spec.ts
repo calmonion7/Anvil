@@ -18,7 +18,7 @@ test("노드 건수는 스냅샷 값", async ({ page }) => {
   await expect(page.locator('[data-node="backlog"]')).toHaveText(/백로그 2$/);
   await expect(page.locator('[data-node="done"]')).toHaveText(/최근 완료 1$/);
   await expect(page.locator('[data-node="followups"]')).toHaveText(/후속후보 2$/);
-  await expect(page.locator('[data-node="run"]')).toContainText("#9");
+  await expect(page.locator('[data-node="run"]')).not.toContainText("#9"); // 「지금」 띠와 중복이라 뺀다
 });
 
 test("실행 세션 작업 중 → 실행 화살표가 흐르고, 종료되면 멈춤", async ({ page }) => {
@@ -37,7 +37,7 @@ test("실행 세션 작업 중 → 실행 화살표가 흐르고, 종료되면 �
 
 test("백로그가 늘면 계획→백로그 펄스 한 번 + 로그 한 줄", async ({ page }) => {
   await expect(edge(page, "e1").locator(".pulse")).toHaveCount(0);
-  await expect(page.locator(".log .empty")).toBeVisible();
+  await expect(page.locator(".log")).toHaveCount(0); // 비어 있으면 로그 줄 자체가 없다
   const more = { ...alpha, backlog: [...alpha.backlog, { ...alpha.backlog[0], task: 12, slug: "b12", path: ".forge/backlog/b12.md" }] };
   await emit(page, "snapshot", more);
   await expect(page.locator('[data-node="backlog"]')).toHaveText(/백로그 3$/);
@@ -69,4 +69,22 @@ test("OS가 밝음이어도 어두운 배경", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg).toBe("rgb(13, 13, 13)");
+});
+
+test("후속후보가 줄면 계획 세션으로 돌아가는 루프에 펄스", async ({ page }) => {
+  await expect(page.locator(".loopback")).toBeVisible();
+  await emit(page, "snapshot", { ...alpha, followups: alpha.followups.slice(1) });
+  await expect(page.locator('.loopback[data-edge="e5"] .pulse')).toHaveCount(1);
+  await expect(page.locator(".log li").first()).toContainText("후속후보 1건");
+});
+
+test("터미널 유입 띠: 작업 중이면 흐르고, 보드 버튼이 명령을 채우면 펄스 + 로그", async ({ page }) => {
+  await expect(page.locator(".feed.run")).toHaveAttribute("data-flow", "idle");
+  await emit(page, "sessions", runWorking);
+  await expect(page.locator(".feed.run")).toHaveAttribute("data-flow", "active");
+  await emit(page, "sessions", {});
+  await page.getByRole("button", { name: /다음 단계/ }).click();
+  await expect(page.locator(".feed.run .fpulse")).toHaveCount(1);
+  await expect(page.locator(".feed.plan .fpulse")).toHaveCount(0);
+  await expect(page.locator(".log li").first()).toContainText("← /forge:fg-next");
 });
