@@ -441,6 +441,51 @@ mod tests {
         assert_eq!(sh_quote("[Anvil] [it's] PLAN"), r"'[Anvil] [it'\''s] PLAN'");
     }
 
+    /// 상태줄 래퍼: 모델·effort(객체/옛 문자열)를 기록하고, 원래 상태줄 명령에 같은 입력을 넘겨 출력을 그대로 낸다.
+    #[test]
+    fn statusline_wrapper_records_model_and_passes_through() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Stdio;
+        if Command::new("jq").arg("--version").output().is_err() {
+            eprintln!("jq 없음 — 건너뜀");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("anvil-sl-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let proj = dir.join("proj");
+        std::fs::create_dir_all(proj.join(".claude")).unwrap();
+        std::fs::write(proj.join(".claude/settings.local.json"), r#"{"statusLine":{"command":"cat"}}"#).unwrap();
+        let script = dir.join("anvil-statusline.sh");
+        std::fs::write(&script, STATUSLINE_SCRIPT).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let run = |name: &str, input: &str| {
+            let mut child = Command::new(&script)
+                .env("ANVIL_SESSION", name)
+                .env("HOME", dir.join("nohome"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            let out = child.wait_with_output().unwrap();
+            (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned())
+        };
+        let rec = |name: &str| std::fs::read_to_string(dir.join(format!("models/{name}.json"))).unwrap();
+
+        let input = format!(
+            r#"{{"model":{{"display_name":"Opus 5.5"}},"effort":{{"level":"high"}},"workspace":{{"project_dir":"{}"}}}}"#,
+            proj.display()
+        );
+        assert_eq!(run("s-plan", &input), (true, input.clone()));
+        assert_eq!(rec("s-plan").trim(), r#"{"model":"Opus 5.5","effort":"high"}"#);
+
+        // 옛 형식 문자열 effort, 원래 상태줄 없음 → 출력 없이 기록만
+        let old = r#"{"model":{"display_name":"Sonnet 5.5"},"effort":"low","cwd":"/nonexistent"}"#;
+        assert_eq!(run("s-run", old), (true, String::new()));
+        assert_eq!(rec("s-run").trim(), r#"{"model":"Sonnet 5.5","effort":"low"}"#);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn utf8_split_across_reads_is_rejoined() {
         let bytes = "한글".as_bytes();
