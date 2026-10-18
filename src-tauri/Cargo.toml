@@ -35,7 +35,7 @@ codegen-units = 1
 lto = true
 opt-level = 3
 panic = "abort"
-strip = true
+strip = false
 
 [dev-dependencies]
 tempfile = "3.27.0"
