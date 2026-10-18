@@ -183,6 +183,26 @@ test("경계를 오른쪽 끝으로 → 계획창만, 실행은 레일", async (
   expect(b.x + b.width).toBeLessThanOrEqual(rb.x + rb.width + 8);
 });
 
+test("머리줄 3단 버튼: 계획 접기 · 가운데 · 실행 접기", async ({ page }) => {
+  const seg = (name: string) => page.getByRole("group", { name: "터미널 배치" }).getByRole("button", { name });
+  await expect(seg("가운데 · 계획·실행 반반")).toHaveClass(/\bon\b/);
+
+  await seg("계획 접기 · 실행창만").click();
+  await expect(page.locator(".foldrail-plan")).toBeVisible();
+  await expect(page.locator(".term-plan")).toBeHidden();
+  await expect(seg("계획 접기 · 실행창만")).toHaveClass(/\bon\b/);
+
+  await seg("실행 접기 · 계획창만").click();
+  await expect(page.locator(".foldrail-run")).toBeVisible();
+  await expect(page.locator(".term-run")).toBeHidden();
+  await expect(page.locator(".term-plan")).toBeVisible();
+
+  await seg("가운데 · 계획·실행 반반").click();
+  await expect(page.locator(".foldrail-plan, .foldrail-run")).toHaveCount(0);
+  const [pl, rn] = [(await page.locator(".term-plan").boundingBox())!, (await page.locator(".term-run").boundingBox())!];
+  expect(Math.abs(pl.width - rn.width)).toBeLessThanOrEqual(2); // 반반
+});
+
 test("가장자리가 아니면 접히지 않는다(20~80%)", async ({ page }) => {
   await dragSplit(page, 0.25);
   await expect(page.locator(".foldrail-plan, .foldrail-run")).toHaveCount(0);

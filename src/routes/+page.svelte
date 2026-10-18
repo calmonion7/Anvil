@@ -43,6 +43,18 @@
     split = unfoldTo;
     saveLayout({ split });
   }
+  /** 머리줄 레이아웃 버튼 — 0 = 계획 접기(실행만) · 0.5 = 반반 · 1 = 실행 접기(계획만) */
+  function setLayout(v: number) {
+    if (split > 0 && split < 1) unfoldTo = split;
+    if (v === 0.5) unfoldTo = 0.5;
+    split = v;
+    saveLayout({ split, unfoldTo });
+  }
+  const LAYOUTS = [
+    { v: 0, label: "계획 접기 · 실행창만" },
+    { v: 0.5, label: "가운데 · 계획·실행 반반" },
+    { v: 1, label: "실행 접기 · 계획창만" },
+  ];
   let rail = $state(false);
   /** 건수 칩이 연 목록 팝업 */
   let listOpen = $state<ListKind | null>(null);
@@ -349,6 +361,25 @@
         <span class="chip">⎇ {current.root.branch ?? "브랜치 없음"} · {current.root.rel}/</span>
         {#if current.root.warning}<span class="chip warn">{current.root.warning}</span>{/if}
         <span class="sp"></span>
+        <div class="seg" role="group" aria-label="터미널 배치">
+          {#each LAYOUTS as l (l.v)}
+            <button
+              class="segb"
+              class:on={l.v === 0.5 ? folded === null : split === l.v}
+              aria-label={l.label}
+              title={l.label}
+              onclick={() => setLayout(l.v)}
+            >
+              <!-- 레이아웃 모양 그림: 접힌 쪽은 좁은 막대 -->
+              <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true">
+                <rect x=".75" y=".75" width="16.5" height="10.5" rx="2" />
+                {#if l.v === 0}<rect class="fill" x="1.5" y="1.5" width="3" height="9" rx="1" /><line x1="5.5" y1="1" x2="5.5" y2="11" />
+                {:else if l.v === 1}<rect class="fill" x="13.5" y="1.5" width="3" height="9" rx="1" /><line x1="12.5" y1="1" x2="12.5" y2="11" />
+                {:else}<line x1="9" y1="1" x2="9" y2="11" />{/if}
+              </svg>
+            </button>
+          {/each}
+        </div>
         {#if current.hasForge}
           {#if runBlocked}<span class="t3">{runBlocked}</span>{/if}
           <button class="btn pri" disabled={!!runBlocked} title="실행 세션 입력창에 /forge:fg-next를 채웁니다(Enter는 직접)" onclick={actions.next}>다음 단계 ▸</button>
@@ -510,6 +541,15 @@
   .head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 16px; flex-wrap: wrap; }
   .head .t1 { font-size: 14px; }
   .head .btn { height: 28px; }
+  /* 터미널 배치 3단 버튼 */
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .segb { width: 32px; height: 26px; display: grid; place-items: center; border: 0; background: var(--raised); color: var(--muted); cursor: pointer; }
+  .segb + .segb { border-left: 1px solid var(--line); }
+  .segb:hover { color: var(--ink); }
+  .segb.on { background: var(--accent-wash); color: var(--accent); }
+  .segb:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .segb svg { fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .segb svg .fill { fill: currentColor; stroke: none; opacity: .6; }
   .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line); color: var(--ink2); font-size: 11px; white-space: nowrap; }
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
   .sp { flex: 1; }
