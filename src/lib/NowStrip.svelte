@@ -1,20 +1,14 @@
 <script lang="ts">
   import type { Snapshot, Stage, CheckResult } from "./types";
-  import type { ListKind } from "./ListPopup.svelte";
   import { splitTitle } from "./format";
 
-  /** 위쪽 고정 띠 — 진행 영역(「지금」 띠 · 루프 줄) + 목록 팝업을 여는 건수 칩 */
+  /** 위쪽 고정 띠 — 진행 영역(「지금」 띠 · 루프 줄). 건수 칩은 FlowBoard 노드로 옮겼다. */
   let {
     snap,
     onOpen,
-    onList,
-    followupCount,
   }: {
     snap: Snapshot;
     onOpen: (rel: string, label: string) => void;
-    onList: (kind: ListKind) => void;
-    /** 숨긴 항목을 뺀 후속후보 수 */
-    followupCount: number;
   } = $props();
 
   const steps: { stage: Stage | "plan"; label: string }[] = [
@@ -90,11 +84,6 @@
     </div>
   {/if}
 
-  <div class="chips">
-    <button class="cnt" onclick={() => onList("followups")}>후속후보 <span class="ct">{followupCount}</span></button>
-    <button class="cnt" onclick={() => onList("done")}>최근 완료 <span class="ct">{snap.doneTotal}</span></button>
-    <button class="cnt" onclick={() => onList("backlog")}>백로그 <span class="ct">{snap.backlog.length}</span></button>
-  </div>
 </section>
 
 <style>
@@ -131,9 +120,4 @@
   .ck.fail .i { color: var(--crit); }
   .ck.waiting .i { color: var(--warn); }
 
-  .chips { flex: none; display: flex; gap: 8px; padding: 8px 16px; }
-  .cnt { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); cursor: pointer; }
-  .cnt:hover { color: var(--ink); border-color: var(--ink2); }
-  .cnt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .ct { font-size: 11px; color: var(--ink); font-weight: 600; }
 </style>
