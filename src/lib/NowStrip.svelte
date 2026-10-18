@@ -40,7 +40,7 @@
 
 <section class="col">
   <div class="band">
-    <span class="t3 b kicker">{!active && next ? "다음" : "지금"}</span>
+    <span class="b kicker">{!active && next ? "다음" : "지금"}</span>
     {#if !snap.hasForge}
       <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 채워집니다.</span>
     {:else if active}
@@ -106,7 +106,10 @@
 
   /* 「지금」 띠 — 첫째 줄 번호·제목·문서 버튼, 둘째 줄 단계(2026-10-18 사람 결정으로 두 줄).
      현재 단계 클래스 `now`와 겹치지 않게 `band` */
-  .band { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  /* 실행 열 머리판 — 터미널에 붙어 한 덩어리, 위쪽 파란 선에 흐름도의 관이 꽂힌다(계획 쪽 .pband와 같은 꼴) */
+  .band { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 16px 6px; background: var(--surface); border-top: 2px solid var(--accent); }
+  .band .kicker { height: 20px; padding: 0 8px; border-radius: 10px; display: inline-flex; align-items: center; font-size: 11px; color: var(--accent); background: var(--accent-wash); }
+  .band > .tt { font-weight: 600; }
   /* 단계 묶음은 폭을 내용에서 잰다 — WebKit이 그 계산에서 flex gap·flex-basis를 빼먹어 뒤 버튼이 '봉인'을 덮었다.
      간격은 margin, 연결선 폭은 width로 준다. */
   .line2 { flex: 0 0 100%; display: flex; align-items: center; gap: 12px; padding-bottom: 2px; }

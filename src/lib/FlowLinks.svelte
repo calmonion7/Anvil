@@ -94,8 +94,8 @@
     const right = (r: DOMRect) => r.right - base.left;
     /** 노드 가운데 x를 열 안으로 당긴 값 — 열 머리 쪽 끝점 */
     const inCol = (x: number, c: DOMRect) => Math.min(Math.max(x, left(c) + 40), right(c) - 40);
-    // 열 머리 띠는 .info 안 margin 8px 아래에서 시작한다 — 이음쇠가 띠 테두리에 걸리게
-    const colTop = (c: DOMRect) => top(c) + 8;
+    // 열 머리판 위쪽 역할 색 선에 꽂히게
+    const colTop = (c: DOMRect) => top(c) + 1;
     const down = (node: DOMRect, col: DOMRect): [Pt, Pt] => [
       { x: cx(node), y: bot(node) },
       { x: inCol(cx(node), col), y: colTop(col) },

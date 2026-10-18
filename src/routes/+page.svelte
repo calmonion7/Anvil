@@ -392,12 +392,10 @@
                   {#key current.path}<NowStrip snap={current} onOpen={openDoc} />{/key}
                 {:else}
                   <div class="pband">
-                    <span class="t3 b kicker">계획</span>
-                    <span class="ink2 tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
-                    <div class="pline2 t3">
-                      <button class="plink" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
-                      <span>· 새 계획은 계획 세션에서 /forge:fg-ask</span>
-                    </div>
+                    <span class="kicker">계획</span>
+                    <span class="tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
+                    <button class="btn sm" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
+                    <div class="pline2 t3">새 계획은 계획 세션에서 <code>/forge:fg-ask</code></div>
                   </div>
                 {/if}
             </div>
@@ -508,13 +506,11 @@
   .info-plan { grid-area: 1 / 1 / 2 / 2; }
   .info-run { grid-area: 1 / 3 / 2 / 4; }
   .info-run :global(.band) { flex: 1; }
-  .pband { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 8px 16px 0; padding: 4px 8px 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; }
-  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; gap: 4px; padding-bottom: 2px; }
-  .kicker { letter-spacing: .04em; flex: none; }
-  .tt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .plink { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: var(--accent); font: inherit; }
-  .plink:hover { text-decoration: underline; }
-  .plink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* 열 머리판 — 터미널에 붙어 한 덩어리. 위쪽 역할 색 선에 흐름도의 관이 꽂힌다. 실행 쪽(NowStrip .band)과 같은 꼴 */
+  .pband { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 16px 6px; background: var(--surface); border-top: 2px solid var(--warn); }
+  .pband .kicker { flex: none; height: 20px; padding: 0 8px; border-radius: 10px; display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; letter-spacing: .04em; background: var(--warn-wash); color: var(--warn); }
+  .pband .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .pline2 { flex: 0 0 100%; min-height: 20px; display: flex; align-items: center; gap: 4px; }
   .cell > .feed { flex: none; position: relative; height: 3px; overflow: hidden; background: var(--line); }
   .feed.plan { --c: var(--warn); }
   .feed.run { --c: var(--accent); }
