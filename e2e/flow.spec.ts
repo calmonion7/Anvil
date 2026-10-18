@@ -143,3 +143,48 @@ test("세션 노드 ↓ 터미널 ↑ 다음 노드 — 직행 가로 화살표�
   // 가로 관도 같은 관 — 백로그→실행 세션, 최근 완료→후속후보
   await expect(page.locator("[data-link]")).toHaveCount(7);
 });
+
+/** 가운데 경계를 body 가로 비율 x 지점까지 끈다 */
+async function dragSplit(page: Page, x: number) {
+  const sep = (await page.locator('[role="separator"][aria-orientation="vertical"]').boundingBox())!;
+  const body = (await page.locator(".body").boundingBox())!;
+  await page.mouse.move(sep.x + sep.width / 2, sep.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(body.x + body.width * x, sep.y + 200, { steps: 5 });
+  await page.mouse.up();
+}
+
+test("경계를 왼쪽 끝으로 → 실행창만, 계획은 레일 · 계획 관은 레일로 · 레일 누르면 복귀", async ({ page }) => {
+  await dragSplit(page, 0.03);
+  await expect(page.locator(".term-plan")).toBeHidden();
+  await expect(page.locator(".term-run")).toBeVisible();
+  const rail = page.locator(".foldrail-plan");
+  await expect(rail).toBeVisible();
+  await expect(rail).toContainText("계획 세션");
+  const rb = (await rail.boundingBox())!;
+  for (const id of ["p-in", "p-out"]) {
+    const b = (await link(page, id).locator(".wall").boundingBox())!;
+    expect(b.x).toBeGreaterThanOrEqual(rb.x - 8); // 관 끝이 레일 안으로
+    expect(b.x).toBeLessThanOrEqual(rb.x + rb.width);
+  }
+  await rail.click();
+  await expect(rail).toHaveCount(0);
+  await expect(page.locator(".term-plan")).toBeVisible();
+  await expect(page.locator(".info-plan .pband")).toBeVisible();
+});
+
+test("경계를 오른쪽 끝으로 → 계획창만, 실행은 레일", async ({ page }) => {
+  await dragSplit(page, 0.97);
+  await expect(page.locator(".term-run")).toBeHidden();
+  await expect(page.locator(".term-plan")).toBeVisible();
+  await expect(page.locator(".foldrail-run")).toContainText("실행 세션");
+  const rb = (await page.locator(".foldrail-run").boundingBox())!;
+  const b = (await link(page, "r-out").locator(".wall").boundingBox())!;
+  expect(b.x + b.width).toBeLessThanOrEqual(rb.x + rb.width + 8);
+});
+
+test("가장자리가 아니면 접히지 않는다(20~80%)", async ({ page }) => {
+  await dragSplit(page, 0.25);
+  await expect(page.locator(".foldrail-plan, .foldrail-run")).toHaveCount(0);
+  await expect(page.locator(".term-plan")).toBeVisible();
+});

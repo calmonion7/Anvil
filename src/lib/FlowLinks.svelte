@@ -15,6 +15,7 @@
     runWorking,
     pulses,
     deps,
+    folded = null,
   }: {
     /** 노드·열 머리를 찾고 좌표의 기준이 되는 요소 */
     root: HTMLElement | undefined;
@@ -23,6 +24,8 @@
     pulses: FlowPulses;
     /** 바뀌면 다시 잰다(프로젝트 전환 등) */
     deps: unknown;
+    /** 레일로 접힌 열 — 그 열의 두 관은 레일 안 왼쪽·오른쪽 자리로 나눠 꽂는다 */
+    folded?: "plan" | "run" | null;
   } = $props();
 
   type Id = "p-in" | "p-out" | "e2" | "r-in" | "r-out" | "e4" | "loop";
@@ -69,10 +72,10 @@
     return { id, tone, d: route(pts), a, b, deg: (Math.atan2(u1.y, u1.x) * 180) / Math.PI };
   }
 
-  /** 위(노드)에서 아래(열 머리)로 — x가 다르면 가운데 높이에서 옆으로 꺾는다 */
-  const drop = (a: Pt, b: Pt): Pt[] => {
+  /** 위(노드)에서 아래(열 머리)로 — x가 다르면 높이 비율 t에서 옆으로 꺾는다 */
+  const drop = (a: Pt, b: Pt, t = 0.5): Pt[] => {
     if (Math.abs(a.x - b.x) < 1) return [a, { x: a.x, y: b.y }];
-    const m = (a.y + b.y) / 2;
+    const m = a.y + (b.y - a.y) * t;
     return [a, { x: a.x, y: m }, { x: b.x, y: m }, b];
   };
 
@@ -93,7 +96,10 @@
     const left = (r: DOMRect) => r.left - base.left;
     const right = (r: DOMRect) => r.right - base.left;
     /** 노드 가운데 x를 열 안으로 당긴 값 — 열 머리 쪽 끝점 */
-    const inCol = (x: number, c: DOMRect) => Math.min(Math.max(x, left(c) + 40), right(c) - 40);
+    const inCol = (x: number, c: DOMRect) => {
+      const pad = Math.min(40, c.width / 2);
+      return Math.min(Math.max(x, left(c) + pad), right(c) - pad);
+    };
     // 열 머리판 위쪽 역할 색 선에 꽂히게
     const colTop = (c: DOMRect) => top(c) + 1;
     const down = (node: DOMRect, col: DOMRect): [Pt, Pt] => [
@@ -104,14 +110,22 @@
     const [pOutB, pOutA] = down(backlog, ip);
     const [rInA, rInB] = down(run, ir);
     const [rOutB, rOutA] = down(done, ir);
+    // 접힌 열(레일): 들어가는 관은 왼쪽 자리, 나가는 관은 오른쪽 자리.
+    // 레일에 가까운 노드의 관이 더 높이 꺾여 바깥 자리로 — 그래야 두 관이 교차하지 않는다
+    let [pi, po, ri, ro] = [0.5, 0.5, 0.5, 0.5];
+    if (folded === "plan") {
+      [pInB.x, pOutA.x, pi, po] = [left(ip) + 10, right(ip) - 10, 0.3, 0.7];
+    } else if (folded === "run") {
+      [rInB.x, rOutA.x, ri, ro] = [left(ir) + 10, right(ir) - 10, 0.7, 0.3];
+    }
     // 귀환 관: 후속후보 위로 올라가 노드 줄 위를 가로질러 계획 세션 위로 내려온다
     const lift = Math.min(top(plan), top(follow)) - 18;
     pipes = [
-      pipe("p-in", "plan", drop(pInA, pInB)),
-      pipe("p-out", "plan", drop(pOutB, pOutA).reverse()),
+      pipe("p-in", "plan", drop(pInA, pInB, pi)),
+      pipe("p-out", "plan", drop(pOutB, pOutA, po).reverse()),
       pipe("e2", "run", [{ x: right(backlog), y: cy(backlog) }, { x: left(run), y: cy(run) }]),
-      pipe("r-in", "run", drop(rInA, rInB)),
-      pipe("r-out", "run", drop(rOutB, rOutA).reverse()),
+      pipe("r-in", "run", drop(rInA, rInB, ri)),
+      pipe("r-out", "run", drop(rOutB, rOutA, ro).reverse()),
       pipe("e4", "done", [{ x: right(done), y: cy(done) }, { x: left(follow), y: cy(follow) }]),
       pipe("loop", "loop", [
         { x: cx(follow), y: top(follow) },

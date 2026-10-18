@@ -36,6 +36,13 @@
   let models = $state<Record<string, ModelInfo>>({});
   /** 계획↔실행(세로 경계) 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
+  /** 접기 전 비율 — 레일을 누르면 여기로 돌아간다 */
+  let unfoldTo = $state(0.5);
+  let folded = $derived<Role | null>(split === 0 ? "plan" : split === 1 ? "run" : null);
+  function unfold() {
+    split = unfoldTo;
+    saveLayout({ split });
+  }
   let rail = $state(false);
   /** 건수 칩이 연 목록 팝업 */
   let listOpen = $state<ListKind | null>(null);
@@ -123,7 +130,7 @@
   }
 
   /** 바꾼 값만 저장한다 — 접기만 해도 경계 위치가 굳으면 기본값이 바뀌어도 따라가지 않는다. */
-  function saveLayout(patch: { split?: number; rail?: boolean }) {
+  function saveLayout(patch: { split?: number; unfoldTo?: number; rail?: boolean }) {
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       localStorage.setItem(LAYOUT_KEY, JSON.stringify({ ...v, ...patch }));
@@ -134,6 +141,7 @@
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
       if (typeof v.split === "number") split = v.split;
+      if (typeof v.unfoldTo === "number") unfoldTo = v.unfoldTo;
       if (typeof v.rail === "boolean") rail = v.rail;
     } catch {}
   }
@@ -254,18 +262,23 @@
   }
 
   /** 계획↔실행(세로 경계) 끌기 — 본문 격자(.body) 기준 비율 */
+  /** 경계를 가장자리 이만큼 안에서 놓으면 그쪽 열을 레일로 접는다(0 = 계획 접힘 → 실행만, 1 = 실행 접힘 → 계획만) */
+  const FOLD_SNAP = 0.12;
+
   function drag(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const body = el.parentElement!;
+    if (split > 0 && split < 1) unfoldTo = split;
     const move = (ev: PointerEvent) => {
       const r = body.getBoundingClientRect();
-      split = Math.min(Math.max((ev.clientX - r.left) / r.width, 0.2), 0.8);
+      const x = (ev.clientX - r.left) / r.width;
+      split = x < FOLD_SNAP ? 0 : x > 1 - FOLD_SNAP ? 1 : Math.min(Math.max(x, 0.2), 0.8);
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
-      saveLayout({ split });
+      saveLayout({ split, unfoldTo });
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -378,8 +391,9 @@
         runWorking={sessionOf(current.path, "run")?.state === "working" && !!sessionOf(current.path, "run")?.alive}
         pulses={outPulses}
         deps={[current.path, split, rail, current.active?.task, listOpen]}
+        {folded}
       />
-      <div class="body" style="grid-template-columns: minmax(0, {split}fr) 6px minmax(0, {1 - split}fr)">
+      <div class="body" style="grid-template-columns: {folded === 'plan' ? '36px 6px minmax(0, 1fr)' : folded === 'run' ? 'minmax(0, 1fr) 6px 36px' : `minmax(0, ${split}fr) 6px minmax(0, ${1 - split}fr)`}">
         <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
         {#if names[current.path]}
           {#each ROLES as r, i (r)}
@@ -387,6 +401,13 @@
             {@const n = names[current.path][i]}
             <!-- 열 머리: 계획 = 최근 쌓은 계획, 실행 = 지금 처리 중인 작업 → 계획·실행을 나란히 본다.
                  같은 grid 행이라 높이가 같이 맞춰져 아래 터미널 머리줄이 나란하다. -->
+            {#if folded === r}
+              <!-- 접힌 열 = 세로 레일. 흐름도의 관은 여기로 꽂히고, 누르면 펼친다(터미널은 숨기기만 해 연결 유지) -->
+              <button class="foldrail info-{r} foldrail-{r}" onclick={unfold} aria-label="{roleLabel[r]} 세션 펼치기" title="{roleLabel[r]} 세션 펼치기">
+                {#if s?.alive}<span class="pip {pipClass(s)}"></span>{/if}
+                <span class="vt">{roleLabel[r]} 세션 · {stateLabel(s)}</span>
+              </button>
+            {:else}
             <div class="info info-{r}">
                 {#if r === "run"}
                   {#key current.path}<NowStrip snap={current} onOpen={openDoc} />{/key}
@@ -399,7 +420,8 @@
                   </div>
                 {/if}
             </div>
-            <div class="cell term-{r}">
+            {/if}
+            <div class="cell term-{r}" class:folded={folded === r}>
               <!-- 유입 띠: 이 터미널은 위 흐름도의 같은 색 노드·보드 버튼에서 입력을 받는다 -->
               <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title="보드 버튼이 이 세션 입력창에 명령을 채웁니다">
                 {#key lastFill.n}{#if lastFill.n && lastFill.role === r}<span class="fpulse"></span>{/if}{/key}
@@ -506,6 +528,15 @@
   .info { min-width: 0; display: flex; flex-direction: column; }
   .info > :global(*) { flex: 1; }
   .info-plan { grid-area: 1 / 1 / 2 / 2; }
+  .cell.folded { display: none; }
+  /* 접힌 열 레일 — 두 행(머리판·터미널)을 다 차지, 위쪽 역할 색 선에 관이 꽂힌다 */
+  /* contain: size — 세로 글씨 높이가 머리판 행 높이를 늘리지 않게 */
+  .foldrail { contain: size; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; border: 0; border-top: 2px solid var(--c); background: var(--surface); color: var(--ink2); cursor: pointer; }
+  .foldrail:hover { background: var(--raised); color: var(--ink); }
+  .foldrail:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .foldrail .vt { writing-mode: vertical-rl; font-size: 11px; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+  .foldrail-plan { grid-area: 1 / 1 / 3 / 2; --c: var(--warn); }
+  .foldrail-run { grid-area: 1 / 3 / 3 / 4; --c: var(--accent); }
   .info-run { grid-area: 1 / 3 / 2 / 4; }
   .info-run :global(.band) { flex: 1; }
   /* 열 머리판 — 터미널에 붙어 한 덩어리. 위쪽 역할 색 선에 흐름도의 관이 꽂힌다. 실행 쪽(NowStrip .band)과 같은 꼴 */
