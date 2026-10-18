@@ -76,8 +76,8 @@
   /* 위 여백은 후속후보 → 계획 세션 귀환 관(FlowLinks)이 넘어가는 자리 */
   .row { position: relative; display: flex; align-items: center; min-width: 0; padding-top: 30px; }
   .via { flex: 1; min-width: 40px; }
-  /* 노드는 관(FlowLinks, z-index 1) 위에 — 관 끝 이음쇠가 노드 테두리 밑으로 들어간다 */
-  .node { position: relative; z-index: 2; flex: none; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--raised); color: var(--ink2); font: inherit; font-size: 11px; white-space: nowrap; }
+  /* 관(FlowLinks)은 노드 테두리에서 시작하고 이음쇠는 테두리 바로 바깥 — 노드가 이음쇠를 가리지 않는다 */
+  .node { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 0 12px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--raised); color: var(--ink2); font: inherit; font-size: 11px; white-space: nowrap; }
   .sess .role { color: var(--ink); font-weight: 600; }
   .sess .st { color: var(--muted); }
   .plan { border-color: var(--warn); }
