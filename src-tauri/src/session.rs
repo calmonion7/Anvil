@@ -90,6 +90,18 @@ pub fn backend_status() -> Option<&'static str> {
 
 // ---------- 앱 데이터 파일(tmux.conf · 훅) ----------
 
+/// 스크립트에 실행 권한을 준다. 윈도우에는 실행 비트가 없어 할 일이 없다.
+fn make_executable(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 const TMUX_CONF: &str = "\
 set -g status off
 set -g mouse on
@@ -171,17 +183,16 @@ impl Files {
 
     /// 앱이 시작할 때마다 tmux.conf · 훅 스크립트 · 상태줄 래퍼 · 훅 설정을 다시 쓴다(앱 업데이트 반영).
     pub fn install(&self) -> std::io::Result<()> {
-        use std::os::unix::fs::PermissionsExt;
         std::fs::create_dir_all(self.sessions())?;
         std::fs::create_dir_all(self.models())?;
         std::fs::create_dir_all(self.dir.join("summary"))?;
         std::fs::write(self.conf(), TMUX_CONF)?;
         let script = self.dir.join("anvil-hook.sh");
         std::fs::write(&script, HOOK_SCRIPT)?;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))?;
+        make_executable(&script)?;
         let statusline = self.dir.join("anvil-statusline.sh");
         std::fs::write(&statusline, STATUSLINE_SCRIPT)?;
-        std::fs::set_permissions(&statusline, std::fs::Permissions::from_mode(0o755))?;
+        make_executable(&statusline)?;
         let cmd = |state: &str| serde_json::json!([{ "hooks": [{ "type": "command", "command": format!("'{}' {state}", script.display()) }] }]);
         let settings = serde_json::json!({ "hooks": {
             "SessionStart": cmd("waiting"),

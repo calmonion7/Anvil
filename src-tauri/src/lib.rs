@@ -389,6 +389,13 @@ const REPO_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 /// 앱과 분리된 프로세스로 설치 스크립트를 돌린다 — 스크립트가 이 앱을 종료·교체하므로
 /// 앱이 꺼져도 살아 있어야 한다. 출력은 앱 데이터 폴더의 update.log로 보낸다.
+#[cfg(not(unix))]
+fn start_update(_app: &AppHandle) -> std::io::Result<()> {
+    // 로컬 폴링 설치(install-app.sh)는 맥 전용이다. 윈도우 배포판은 tauri 업데이터를 쓴다.
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "로컬 설치 업데이트는 macOS 전용"))
+}
+
+#[cfg(unix)]
 fn start_update(app: &AppHandle) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
     let log = std::fs::OpenOptions::new()
