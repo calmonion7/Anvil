@@ -83,6 +83,7 @@
   let fillError = $state("");
   let newVersion = $state<string | null>(null);
   let updating = $state(false);
+  let updateError = $state("");
   let backendHint = $state<string | null>(null);
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
   /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
@@ -440,18 +441,23 @@
       {/if}
       {#if newVersion}
         <div class="band">
-          <span class="b">새 버전 준비됨</span><span class="ink2">v{newVersion}</span>
+          {#if updateError}
+            <span class="b"><span class="crit">✕</span> 업데이트 실패</span><span class="ink2">{updateError}</span>
+          {:else}
+            <span class="b">새 버전 준비됨</span><span class="ink2">v{newVersion}</span>
+          {/if}
           <span class="sp"></span>
           <button
             class="btn sm"
             disabled={updating}
             onclick={() => {
               updating = true;
+              updateError = "";
               invoke("updater_install").catch((e) => {
                 updating = false;
-                fillError = String(e);
+                updateError = String(e);
               });
-            }}>{updating ? "업데이트 중…" : "업데이트·재시작"}</button>
+            }}>{updating ? "업데이트 중…" : updateError ? "다시 시도" : "업데이트·재시작"}</button>
         </div>
       {/if}
       {#if fillError}
