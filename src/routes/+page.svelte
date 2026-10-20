@@ -81,6 +81,9 @@
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
+  let newVersion = $state<string | null>(null);
+  let updating = $state(false);
+  let backendHint = $state<string | null>(null);
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
   /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
   let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
@@ -237,11 +240,22 @@
       onSessions(await invoke("session_states"));
       models = await invoke("session_models");
     }, 5000);
+    // 배포판 업데이트: 시작 때와 24시간마다 확인한다(로컬 폴링 설치본은 백엔드가 None을 준다).
+    const checkUpdate = () =>
+      invoke<string | null>("updater_check")
+        .then((v) => (newVersion = v))
+        .catch(() => {});
+    checkUpdate();
+    invoke<string | null>("backend_status")
+      .then((m) => (backendHint = m))
+      .catch(() => {});
+    const updatePoll = setInterval(checkUpdate, 24 * 60 * 60 * 1000);
     return () => {
       unSnap.then((f) => f());
       unSess.then((f) => f());
       unModels.then((f) => f());
       clearInterval(poll);
+      clearInterval(updatePoll);
     };
   });
 
@@ -419,6 +433,27 @@
           <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>파일 열기</button>
         </div>
       {/each}
+      {#if backendHint}
+        <div class="band">
+          <span class="b"><span class="crit">✕</span> 세션을 열 수 없습니다</span><span class="ink2">{backendHint}</span>
+        </div>
+      {/if}
+      {#if newVersion}
+        <div class="band">
+          <span class="b">새 버전 준비됨</span><span class="ink2">v{newVersion}</span>
+          <span class="sp"></span>
+          <button
+            class="btn sm"
+            disabled={updating}
+            onclick={() => {
+              updating = true;
+              invoke("updater_install").catch((e) => {
+                updating = false;
+                fillError = String(e);
+              });
+            }}>{updating ? "업데이트 중…" : "업데이트·재시작"}</button>
+        </div>
+      {/if}
       {#if fillError}
         <div class="band">
           <span class="b">✕ 명령을 채우지 못했습니다</span><span class="ink2">{fillError}</span>
