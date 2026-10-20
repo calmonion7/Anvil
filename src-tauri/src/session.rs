@@ -40,10 +40,52 @@ fn lang() -> String {
     std::env::var("LANG").ok().filter(|l| l.contains("UTF-8")).unwrap_or_else(|| "en_US.UTF-8".into())
 }
 
+/// tmux에 넘기는 경로. 윈도우에선 tmux가 WSL 안에 있으므로 WSL 경로로 바꾼다.
+pub fn tmux_path(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if cfg!(windows) { crate::wsl::to_wsl(&s) } else { s.into_owned() }
+}
+
+/// tmux를 부르는 유일한 경로: (프로그램, 공통 인자). 윈도우에선 `wsl.exe -- tmux …`.
+fn tmux_argv(conf: &Path) -> (&'static str, Vec<String>) {
+    #[cfg(windows)]
+    let (prog, mut args) = ("wsl.exe", vec!["--".to_string(), "tmux".to_string()]);
+    #[cfg(not(windows))]
+    let (prog, mut args) = ("tmux", Vec::<String>::new());
+    args.extend(["-u", "-L", SOCKET, "-f"].map(String::from));
+    args.push(tmux_path(conf));
+    (prog, args)
+}
+
 fn tmux(conf: &Path) -> Command {
-    let mut c = Command::new("tmux");
-    c.args(["-u", "-L", SOCKET, "-f"]).arg(conf).env("PATH", login_path()).env("LANG", lang());
+    let (prog, args) = tmux_argv(conf);
+    let mut c = Command::new(prog);
+    c.args(args).env("PATH", login_path()).env("LANG", lang());
     c
+}
+
+/// WSL·tmux가 없으면 안내 문구. `probe(프로그램, 인자)`가 실행 성공 여부를 알려준다.
+pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> Option<&'static str> {
+    if windows {
+        if !probe("wsl.exe", &["--", "true"]) || !probe("wsl.exe", &["--", "tmux", "-V"]) {
+            return Some("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`");
+        }
+    } else if !probe("tmux", &["-V"]) {
+        return Some("tmux 설치 필요: `brew install tmux`");
+    }
+    None
+}
+
+/// 실제 환경으로 backend_missing을 잰다.
+pub fn backend_status() -> Option<&'static str> {
+    backend_missing(cfg!(windows), |prog, args| {
+        Command::new(prog)
+            .args(args)
+            .env("PATH", login_path())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
 }
 
 // ---------- 앱 데이터 파일(tmux.conf · 훅) ----------
@@ -235,7 +277,7 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     );
     let out = tmux(&files.conf())
         .args(["new-session", "-d", "-s", &name, "-x", "200", "-y", "50", "-c"])
-        .arg(project)
+        .arg(tmux_path(project))
         .args(["-e", &format!("ANVIL_SESSION={name}"), "-e", &format!("PATH={}", login_path()), "-e", &format!("LANG={}", lang())])
         // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 이 이름을 다시 붙인다.
         .args(["-e", &format!("CC_SESSION_NAME={title}")])
@@ -374,9 +416,9 @@ impl Terms {
         let pair = native_pty_system()
             .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| e.to_string())?;
-        let mut cmd = CommandBuilder::new("tmux");
-        cmd.args(["-u", "-L", SOCKET, "-f"]);
-        cmd.arg(files.conf());
+        let (prog, args) = tmux_argv(&files.conf());
+        let mut cmd = CommandBuilder::new(prog);
+        cmd.args(args);
         cmd.args(["attach-session", "-t", name]);
         cmd.env("PATH", login_path());
         cmd.env("LANG", lang());
@@ -472,6 +514,18 @@ mod tests {
 
     /// Finder에서 띄운 앱은 PATH·LANG이 없다 — tmux 명령은 늘 로그인 PATH와 UTF-8 로캘, `-u`를 실어야
     /// claude·tmux를 찾고 한글이 `_`로 바뀌지 않는다(#2 실측).
+    #[test]
+    fn backend_missing_reports_wsl_tmux_hint() {
+        let none = |_: &str, _: &[&str]| false;
+        let all = |_: &str, _: &[&str]| true;
+        let no_tmux = |_: &str, a: &[&str]| !a.contains(&"tmux");
+        assert!(backend_missing(true, none).unwrap().contains("wsl -- sudo apt install tmux"));
+        assert!(backend_missing(true, no_tmux).unwrap().contains("WSL에 tmux"));
+        assert_eq!(backend_missing(true, all), None);
+        assert!(backend_missing(false, none).is_some());
+        assert_eq!(backend_missing(false, all), None);
+    }
+
     #[test]
     fn tmux_command_carries_path_lang_and_utf8() {
         let c = tmux(Path::new("/tmp/anvil-tmux.conf"));

@@ -1,6 +1,8 @@
 pub mod forge;
 pub mod session;
 pub mod slash;
+pub mod updater;
+pub mod wsl;
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, Debouncer};
@@ -345,6 +347,12 @@ fn slash_commands(project: String) -> Vec<String> {
     slash::collect(&Path::new(&home).join(".claude"), Some(Path::new(&project)))
 }
 
+/// 세션 백엔드(tmux, 윈도우는 WSL tmux)가 없으면 안내 문구
+#[tauri::command]
+fn backend_status() -> Option<&'static str> {
+    session::backend_status()
+}
+
 #[tauri::command]
 fn hidden_followups(app: AppHandle) -> Vec<HiddenFollowup> {
     load_hidden(&app)
@@ -425,6 +433,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // 창 크기·위치·최대화만 기억한다 — macOS 전체화면은 복원하지 않는다.
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -478,7 +487,10 @@ pub fn run() {
             session_fill,
             hidden_followups,
             set_followup_hidden,
-            slash_commands
+            slash_commands,
+            backend_status,
+            updater::updater_check,
+            updater::updater_install
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
