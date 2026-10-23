@@ -2,6 +2,7 @@
   import type { Snapshot, SessionState } from "./types";
   import type { ListKind } from "./ListPopup.svelte";
   import { stateLabel } from "./sessions";
+  import { t } from "./i18n.svelte";
   import type { FlowPulses } from "./FlowLinks.svelte";
 
   /** 정보 흐름도의 노드 줄 — 계획 세션 → 백로그 → 실행 세션 → 완료 → 후속후보 ↺ 계획.
@@ -50,24 +51,24 @@
 </script>
 
 
-<section class="flow" aria-label="정보 흐름">
+<section class="flow" aria-label={t("정보 흐름", "Information flow")}>
   <div class="row">
     <div class="node sess plan" class:wait={waiting(plan)} data-node="plan">
-      <span class="role">계획 세션</span><span class="st">{stateLabel(plan)}</span>
+      <span class="role">{t("계획 세션", "Plan session")}</span><span class="st">{stateLabel(plan)}</span>
     </div>
     <!-- 노드 사이 빈칸 = 관이 지나가는 자리. 계획 세션 → 백로그는 계획 터미널을 거친다 -->
     <span class="via" aria-hidden="true"></span>
-    <button class="node cnt backlog" data-node="backlog" onclick={() => onList("backlog")}>백로그 <span class="ct">{snap.backlog.length}</span></button>
+    <button class="node cnt backlog" data-node="backlog" onclick={() => onList("backlog")}>{t("백로그", "Backlog")} <span class="ct">{snap.backlog.length}</span></button>
     <span class="via" aria-hidden="true"></span>
     <div class="node sess run" class:wait={waiting(run)} data-node="run">
-      <span class="role">실행 세션</span>
+      <span class="role">{t("실행 세션", "Run session")}</span>
       <span class="st">{stateLabel(run)}</span>
     </div>
     <!-- 실행 세션 → 최근 완료는 실행 터미널을 거친다 -->
     <span class="via" aria-hidden="true"></span>
-    <button class="node cnt done" data-node="done" onclick={() => onList("done")}>최근 완료 <span class="ct">{snap.doneTotal}</span></button>
+    <button class="node cnt done" data-node="done" onclick={() => onList("done")}>{t("최근 완료", "Recently done")} <span class="ct">{snap.doneTotal}</span></button>
     <span class="via" aria-hidden="true"></span>
-    <button class="node cnt follow" data-node="followups" onclick={() => onList("followups")}>후속후보 <span class="ct">{followupCount}</span></button>
+    <button class="node cnt follow" data-node="followups" onclick={() => onList("followups")}>{t("후속후보", "Follow-ups")} <span class="ct">{followupCount}</span></button>
   </div>
 </section>
 

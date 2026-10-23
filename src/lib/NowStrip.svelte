@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snapshot, Stage, CheckResult } from "./types";
   import { splitTitle } from "./format";
+  import { t } from "./i18n.svelte";
   import type { Snippet } from "svelte";
 
   /** 위쪽 고정 띠 — 진행 영역(「지금」 띠 · 루프 줄). 건수 칩은 FlowBoard 노드로 옮겼다. */
@@ -18,12 +19,12 @@
     tools?: Snippet;
   } = $props();
 
-  const steps: { stage: Stage | "plan"; label: string }[] = [
-    { stage: "plan", label: "계획" },
-    { stage: "run", label: "실행·검증" },
-    { stage: "retro", label: "회고" },
-    { stage: "seal", label: "봉인" },
-  ];
+  const steps: { stage: Stage | "plan"; label: string }[] = $derived([
+    { stage: "plan", label: t("계획", "Plan") },
+    { stage: "run", label: t("실행·검증", "Run · verify") },
+    { stage: "retro", label: t("회고", "Retro") },
+    { stage: "seal", label: t("봉인", "Seal") },
+  ]);
   const order = ["plan", "run", "retro", "seal"];
   const checkIcon: Record<CheckResult, string> = { pass: "✓", fail: "✕", waiting: "⏳", unknown: "·" };
 
@@ -47,10 +48,10 @@
 
 <section class="col">
   <div class="band">
-    <span class="b kicker">{!active && next ? "다음" : "지금"}</span>
+    <span class="b kicker">{!active && next ? t("다음", "Next") : t("지금", "Now")}</span>
     {#if !snap.hasForge}
-      <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 계획 세션에서 <code>/forge:fg-ask</code> 로 첫 계획을 만들면 보드가 채워집니다.</span>
-      {#if onStart}<button class="btn sm" onclick={onStart}>계획 세션에서 시작</button>{/if}
+      <span class="ink2 tt">{t("forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 계획 세션에서 ", "No forge — this project has no .forge/ yet. Create a first plan with ")}<code>/forge:fg-ask</code>{t(" 로 첫 계획을 만들면 보드가 채워집니다.", " in the plan session to fill the board.")}</span>
+      {#if onStart}<button class="btn sm" onclick={onStart}>{t("계획 세션에서 시작", "Start in plan session")}</button>{/if}
     {:else if active}
       <span class="tt" title={active.title}><span class="num">{num(active.task)}</span>{splitTitle(active.title)[0]}</span>
       {#each active.docs as d (d.path)}
@@ -67,7 +68,7 @@
           {/each}
         </span>
         {#if active.inLoop || active.running}
-          <span class="t3">{[active.inLoop && "루프 소속", active.running && "실행 중"].filter(Boolean).join(" · ")}</span>
+          <span class="t3">{[active.inLoop && t("루프 소속", "In loop"), active.running && t("실행 중", "Running")].filter(Boolean).join(" · ")}</span>
         {/if}
         <span class="sp2"></span>
         {@render tools?.()}
@@ -77,14 +78,14 @@
         <button class="link tt" onclick={() => onOpen(next.path, `plan · ${num(next.task)}`)} title={next.title}>
           <span class="num">{num(next.task)}</span>{splitTitle(next.title)[0]}
         </button>
-        <span class="t3">실행 대기 · 백로그 {snap.backlog.length}건</span>
+        <span class="t3">{t(`실행 대기 · 백로그 ${snap.backlog.length}건`, `Waiting to run · ${snap.backlog.length} in backlog`)}</span>
       {:else}
-        <span class="ink2">진행 중인 작업 없음 · 백로그 비어 있음</span>
+        <span class="ink2">{t("진행 중인 작업 없음 · 백로그 비어 있음", "No task in progress · backlog empty")}</span>
       {/if}
       <span class="awaiting">
         {#each snap.executed as e (e.path)}
           <button class="link" onclick={() => onOpen(e.path, `plan · ${num(e.task)}`)} title={e.title}>
-            <span class="num">{num(e.task)}</span>{splitTitle(e.title)[0]} <span class="t3">· 회고 대기</span>
+            <span class="num">{num(e.task)}</span>{splitTitle(e.title)[0]} <span class="t3">{t("· 회고 대기", "· awaiting retro")}</span>
           </button>
         {/each}
       </span>
@@ -95,9 +96,9 @@
   {#if loop}
     <div class="wall" class:stopped={!!loop.wall}>
       <span class="tt" title={loop.wall ?? loop.goal}>
-        {#if loop.wall}<span class="b">⏸ 루프 정지</span> — {loop.wall}{:else}<span class="b">↻ 루프 진행</span>{/if}
+        {#if loop.wall}<span class="b">{t("⏸ 루프 정지", "⏸ Loop halted")}</span> — {loop.wall}{:else}<span class="b">{t("↻ 루프 진행", "↻ Loop running")}</span>{/if}
       </span>
-      {#if loop.replanCap !== null}<span class="t3">재계획 {loop.replanRound ?? 0}/{loop.replanCap}</span>{/if}
+      {#if loop.replanCap !== null}<span class="t3">{t("재계획", "Replan")} {loop.replanRound ?? 0}/{loop.replanCap}</span>{/if}
       <span class="cks">
         {#each loop.checks as c (c.id)}
           <span class="ck {c.result}" title={c.text}><span class="i">{checkIcon[c.result]}</span>{c.id}</span>

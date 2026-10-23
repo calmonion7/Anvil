@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snapshot, Followup, BoardActions } from "./types";
   import { dayLabel, splitTitle, inlineCode, norm, priorityLabel } from "./format";
+  import { t } from "./i18n.svelte";
 
   /** 건수 칩이 여는 목록 팝업 — 후속후보 · 최근 완료 · 백로그. 착수·실행은 팝업을 닫고, 숨김·되돌리기·문서 열기는 유지한다. */
   let {
@@ -27,7 +28,8 @@
   } = $props();
 
   const DONE_PAGE = 20;
-  const titles: Record<ListKind, string> = { followups: "후속후보", done: "최근 완료", backlog: "백로그" };
+  const titles = (k: ListKind): string =>
+    ({ followups: t("후속후보", "Follow-ups"), done: t("최근 완료", "Recently done"), backlog: t("백로그", "Backlog") })[k];
   let showAllDone = $state(false);
   let showHidden = $state(false);
 
@@ -38,15 +40,15 @@
 
   function verifiedMark(v: string | null): { icon: string; label: string; cls: string } {
     switch (norm(v)) {
-      case "yes": return { icon: "✓", label: "검증", cls: "good" };
-      case "skipped": return { icon: "~", label: "검증 건너뜀", cls: "" };
-      case "n/a": return { icon: "~", label: "검증 해당 없음", cls: "" };
-      case "failed": return { icon: "✕", label: "검증 실패", cls: "crit" };
-      default: return { icon: "·", label: "검증 전", cls: "" };
+      case "yes": return { icon: "✓", label: t("검증", "Verified"), cls: "good" };
+      case "skipped": return { icon: "~", label: t("검증 건너뜀", "Verification skipped"), cls: "" };
+      case "n/a": return { icon: "~", label: t("검증 해당 없음", "Verification N/A"), cls: "" };
+      case "failed": return { icon: "✕", label: t("검증 실패", "Verification failed"), cls: "crit" };
+      default: return { icon: "·", label: t("검증 전", "Not verified"), cls: "" };
     }
   }
   const retroLabel = (r: string | null) =>
-    norm(r) === "skipped" ? "회고 건너뜀" : !r || norm(r) === "pending" ? "회고 전" : "회고 ✓";
+    norm(r) === "skipped" ? t("회고 건너뜀", "Retro skipped") : !r || norm(r) === "pending" ? t("회고 전", "Retro pending") : t("회고 ✓", "Retro ✓");
 
   const num = (t: number | null) => (t === null ? "#—" : `#${t}`);
 </script>
@@ -58,14 +60,14 @@
 <!-- 바깥(어두운 바탕) 클릭으로 닫힌다. Esc는 +page가 맨 위 겹침부터 닫는다. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="scrim" onclick={(e) => e.target === e.currentTarget && onClose()}>
-  <div class="pop" role="dialog" aria-modal="true" aria-label={titles[kind]}>
+  <div class="pop" role="dialog" aria-modal="true" aria-label={titles(kind)}>
     <div class="ch">
-      <span class="b">{titles[kind]}</span>
+      <span class="b">{titles(kind)}</span>
       <span class="sp"></span>
       {#if kind === "followups" && hiddenCount}
-        <button class="more" onclick={() => (showHidden = !showHidden)}>{showHidden ? "숨긴 항목 감추기" : `숨긴 항목 보기 (${hiddenCount})`}</button>
+        <button class="more" onclick={() => (showHidden = !showHidden)}>{showHidden ? t("숨긴 항목 감추기", "Hide hidden items") : t(`숨긴 항목 보기 (${hiddenCount})`, `Show hidden items (${hiddenCount})`)}</button>
       {/if}
-      <button class="x" aria-label="닫기" onclick={onClose}>×</button>
+      <button class="x" aria-label={t("닫기", "Close")} onclick={onClose}>×</button>
     </div>
 
     <div class="list">
@@ -78,14 +80,14 @@
               <span class="mt">← {f.sourceSlug}{f.date ? ` · ${dayLabel(f.date)}` : ""}</span>
             </button>
             {#if !isHidden}
-              <button class="btn sm" disabled={!!planBlocked} title={planBlocked ?? "계획 세션 입력창에 /forge:fg-ask를 채웁니다"} onclick={() => { actions.start(f); onClose(); }}>착수</button>
+              <button class="btn sm" disabled={!!planBlocked} title={planBlocked ?? t("계획 세션 입력창에 /forge:fg-ask를 채웁니다", "Fills /forge:fg-ask into the plan session input")} onclick={() => { actions.start(f); onClose(); }}>{t("착수", "Start")}</button>
             {/if}
-            <button class="btn sm quiet" onclick={() => actions.setHidden(f, !isHidden)}>{isHidden ? "되돌리기" : "숨김"}</button>
+            <button class="btn sm quiet" onclick={() => actions.setHidden(f, !isHidden)}>{isHidden ? t("되돌리기", "Unhide") : t("숨김", "Hide")}</button>
           </div>
         {:else}
           <div class="emptycell">
-            <span class="t3">비어 있음</span>
-            <span class="ink2">회고나 실행 기록에 남은 후속후보가 없습니다.</span>
+            <span class="t3">{t("비어 있음", "Empty")}</span>
+            <span class="ink2">{t("회고나 실행 기록에 남은 후속후보가 없습니다.", "No follow-ups left in retros or run logs.")}</span>
           </div>
         {/each}
       {:else if kind === "done"}
@@ -97,13 +99,13 @@
           </button>
         {:else}
           <div class="emptycell">
-            <span class="t3">비어 있음</span>
-            <span class="ink2">아직 봉인한 작업이 없습니다.</span>
+            <span class="t3">{t("비어 있음", "Empty")}</span>
+            <span class="ink2">{t("아직 봉인한 작업이 없습니다.", "No sealed tasks yet.")}</span>
           </div>
         {/each}
         {#if snap.done.length > DONE_PAGE}
           <button class="more" onclick={() => (showAllDone = !showAllDone)}>
-            {showAllDone ? "최근 것만 보기" : `전체 기록 보기 (${snap.done.length}) →`}
+            {showAllDone ? t("최근 것만 보기", "Show recent only") : t(`전체 기록 보기 (${snap.done.length}) →`, `Show full history (${snap.done.length}) →`)}
           </button>
         {/if}
       {:else}
@@ -112,15 +114,15 @@
             <button class="open" onclick={() => onOpen(p.path, `plan · ${num(p.task)}`)} title={p.title}>
               <span class="tt"><span class="num">{num(p.task)}</span>{p.title}</span>
               <span class="mt">
-                <span class:pri-h={p.priority === "high"}>{priorityLabel[p.priority]}</span>{p.part ? ` · part ${p.part}` : ""}{p.fromLoop ? " · 루프 생성" : ""}
+                <span class:pri-h={p.priority === "high"}>{priorityLabel[p.priority]}</span>{p.part ? ` · part ${p.part}` : ""}{p.fromLoop ? t(" · 루프 생성", " · from loop") : ""}
               </span>
             </button>
-            <button class="btn sm" disabled={!!runBlocked} title={runBlocked ?? "실행 세션 입력창에 /forge:fg-run을 채웁니다"} onclick={() => { actions.run(p); onClose(); }}>실행</button>
+            <button class="btn sm" disabled={!!runBlocked} title={runBlocked ?? t("실행 세션 입력창에 /forge:fg-run을 채웁니다", "Fills /forge:fg-run into the run session input")} onclick={() => { actions.run(p); onClose(); }}>{t("실행", "Run")}</button>
           </div>
         {:else}
           <div class="emptycell">
-            <span class="t3">비어 있음</span>
-            <span class="ink2">대기 중인 계획이 없습니다.</span>
+            <span class="t3">{t("비어 있음", "Empty")}</span>
+            <span class="ink2">{t("대기 중인 계획이 없습니다.", "No plans waiting.")}</span>
           </div>
         {/each}
       {/if}

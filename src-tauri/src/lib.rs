@@ -1,5 +1,6 @@
 pub mod deps;
 pub mod forge;
+pub mod i18n;
 pub mod session;
 pub mod slash;
 pub mod updater;
@@ -190,7 +191,7 @@ fn list_projects(app: AppHandle, state: State<AppState>) -> Vec<forge::Snapshot>
 fn add_project(app: AppHandle, state: State<AppState>, path: String) -> Result<Vec<forge::Snapshot>, String> {
     let path = PathBuf::from(path);
     if !path.is_dir() {
-        return Err(format!("폴더가 아닙니다: {}", path.display()));
+        return Err(format!("{}{}", crate::i18n::tr("폴더가 아닙니다: ", "Not a folder: "), path.display()));
     }
     {
         let mut projects = state.projects.lock().unwrap();
@@ -219,7 +220,7 @@ fn registered(state: &State<AppState>, project: &Path) -> Result<(), String> {
     if state.projects.lock().unwrap().iter().any(|p| p == project) {
         Ok(())
     } else {
-        Err("등록하지 않은 프로젝트입니다".into())
+        Err(crate::i18n::tr("등록하지 않은 프로젝트입니다", "This project is not registered").into())
     }
 }
 
@@ -242,6 +243,12 @@ fn session_titles(app: AppHandle, project: String) -> [(String, String); 2] {
     let p = Path::new(&project);
     let f = files(&app);
     ["plan", "run"].map(|r| (session::session_title(p, r).0, session::role_model(&f, r)))
+}
+
+/// 화면 언어를 백엔드 문구(안내 띠 · forge 경고 · 알림)에도 맞춘다
+#[tauri::command]
+fn set_lang(en: bool) {
+    i18n::set_en(en);
 }
 
 /// 설정 > 역할별 모델 `{plan, run}`
@@ -267,7 +274,7 @@ fn session_start(app: AppHandle, state: State<AppState>, project: String, role: 
     let project = PathBuf::from(project);
     registered(&state, &project)?;
     if role != "plan" && role != "run" {
-        return Err(format!("알 수 없는 역할: {role}"));
+        return Err(format!("{}{role}", crate::i18n::tr("알 수 없는 역할: ", "Unknown role: ")));
     }
     session::start(&files(&app), &project, &role)
 }
@@ -276,7 +283,7 @@ fn session_start(app: AppHandle, state: State<AppState>, project: String, role: 
 #[tauri::command]
 fn session_kill(app: AppHandle, name: String) -> Result<(), String> {
     if !name.starts_with("anvil-") {
-        return Err("Anvil 세션이 아닙니다".into());
+        return Err(crate::i18n::tr("Anvil 세션이 아닙니다", "Not an Anvil session").into());
     }
     session::kill(&files(&app), &name)
 }
@@ -321,7 +328,7 @@ async fn session_fill(app: AppHandle, project: String, role: String, text: Strin
     let project = PathBuf::from(project);
     registered(&app.state::<AppState>(), &project)?;
     if role != "plan" && role != "run" {
-        return Err(format!("알 수 없는 역할: {role}"));
+        return Err(format!("{}{role}", crate::i18n::tr("알 수 없는 역할: ", "Unknown role: ")));
     }
     tauri::async_runtime::spawn_blocking(move || {
         let files = files(&app);
@@ -330,10 +337,10 @@ async fn session_fill(app: AppHandle, project: String, role: String, text: Strin
         if !alive {
             session::start(&files, &project, &role)?;
             if !session::wait_ready(&files, &name, Duration::from_secs(40)) {
-                return Err("세션이 입력을 받을 준비가 되지 않았습니다(처음 여는 폴더라면 claude의 폴더 신뢰 확인을 먼저 해 주세요)".into());
+                return Err(crate::i18n::tr("세션이 입력을 받을 준비가 되지 않았습니다(처음 여는 폴더라면 claude의 폴더 신뢰 확인을 먼저 해 주세요)", "The session is not ready for input (if this folder is new, confirm claude's folder-trust prompt first)").into());
             }
         } else if session::states(&files).get(&name).is_some_and(|s| s.state == "working") {
-            return Err("세션이 작업 중이라 채우지 않았습니다".into());
+            return Err(crate::i18n::tr("세션이 작업 중이라 채우지 않았습니다", "The session is busy, so nothing was filled in").into());
         }
         session::fill(&files, &name, &text)?;
         Ok(name)
@@ -424,12 +431,12 @@ fn set_followup_hidden(app: AppHandle, item: HiddenFollowup, hidden: bool) -> Re
 fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<String, String> {
     let project = PathBuf::from(project);
     if !state.projects.lock().unwrap().contains(&project) {
-        return Err("등록하지 않은 프로젝트입니다".into());
+        return Err(crate::i18n::tr("등록하지 않은 프로젝트입니다", "This project is not registered").into());
     }
     let forge_dir = project.join(".forge").canonicalize().map_err(|e| e.to_string())?;
     let file = project.join(&rel).canonicalize().map_err(|e| e.to_string())?;
     if !file.starts_with(&forge_dir) {
-        return Err(".forge/ 밖의 파일은 열지 않습니다".into());
+        return Err(crate::i18n::tr(".forge/ 밖의 파일은 열지 않습니다", "Files outside .forge/ are not opened").into());
     }
     std::fs::read_to_string(file).map_err(|e| e.to_string())
 }
@@ -442,7 +449,7 @@ const REPO_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 #[cfg(not(unix))]
 fn start_update(_app: &AppHandle) -> std::io::Result<()> {
     // 로컬 폴링 설치(install-app.sh)는 맥 전용이다. 윈도우 배포판은 tauri 업데이터를 쓴다.
-    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "로컬 설치 업데이트는 macOS 전용"))
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, crate::i18n::tr("로컬 설치 업데이트는 macOS 전용", "Local install updates are macOS-only")))
 }
 
 #[cfg(unix)]
@@ -538,6 +545,7 @@ pub fn run() {
             session_states,
             session_names,
             session_titles,
+            set_lang,
             model_settings,
             set_model_setting,
             session_models,

@@ -82,18 +82,18 @@ fn tmux(conf: &Path) -> Command {
 pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> Option<&'static str> {
     if windows {
         if !probe("wsl.exe", &["--", "true"]) || !probe("wsl.exe", &["--", "tmux", "-V"]) {
-            return Some("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`");
+            return Some(crate::i18n::tr("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`", "tmux is required in WSL: `wsl -- sudo apt install tmux`"));
         }
         // 로그인 셸로 물어야 ~/.local/bin(claude 기본 설치 위치)이 PATH에 잡힌다.
         if !probe("wsl.exe", &["--", "bash", "-lc", "claude --version"]) {
-            return Some("WSL에 claude CLI 설치 필요: `wsl -- npm install -g @anthropic-ai/claude-code` 후 `wsl -- claude`로 로그인");
+            return Some(crate::i18n::tr("WSL에 claude CLI 설치 필요: `wsl -- npm install -g @anthropic-ai/claude-code` 후 `wsl -- claude`로 로그인", "claude CLI is required in WSL: `wsl -- npm install -g @anthropic-ai/claude-code`, then log in with `wsl -- claude`"));
         }
     } else {
         if !probe("tmux", &["-V"]) {
-            return Some("tmux 설치 필요: `brew install tmux`");
+            return Some(crate::i18n::tr("tmux 설치 필요: `brew install tmux`", "tmux is required: `brew install tmux`"));
         }
         if !probe("claude", &["--version"]) {
-            return Some("claude CLI 설치 필요: `npm install -g @anthropic-ai/claude-code` 후 터미널에서 `claude`로 로그인");
+            return Some(crate::i18n::tr("claude CLI 설치 필요: `npm install -g @anthropic-ai/claude-code` 후 터미널에서 `claude`로 로그인", "claude CLI is required: `npm install -g @anthropic-ai/claude-code`, then log in with `claude` in a terminal"));
         }
     }
     None
@@ -225,10 +225,10 @@ impl Files {
     /// 훅이 앱이 꺼져 있을 때 알림 문구로 쓰는 프로젝트 요약.
     pub fn write_summary(&self, project: &Path, name: &str, headline: &str) {
         for role in ["plan", "run"] {
-            let label = if role == "plan" { "계획" } else { "실행" };
+            let label = if role == "plan" { crate::i18n::tr("계획", "plan") } else { crate::i18n::tr("실행", "run") };
             let _ = std::fs::write(
                 self.dir.join("summary").join(format!("{}.txt", session_name(project, role))),
-                format!("{name} {label} 세션 · 입력 대기 — {headline}"),
+                format!("{name} {label} {} — {headline}", crate::i18n::tr("세션 · 입력 대기", "session · waiting for input")),
             );
         }
     }
@@ -285,10 +285,10 @@ pub fn role_model(files: &Files, role: &str) -> String {
 
 pub fn set_role_model(files: &Files, role: &str, model: &str) -> Result<(), String> {
     if role != "plan" && role != "run" {
-        return Err(format!("알 수 없는 역할: {role}"));
+        return Err(format!("{}{role}", crate::i18n::tr("알 수 없는 역할: ", "Unknown role: ")));
     }
     if !MODEL_CHOICES.contains(&model) {
-        return Err(format!("알 수 없는 모델: {model}"));
+        return Err(format!("{}{model}", crate::i18n::tr("알 수 없는 모델: ", "Unknown model: ")));
     }
     let mut v: serde_json::Value = std::fs::read_to_string(files.settings())
         .ok()
@@ -363,7 +363,7 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     let out = c
         .arg(cmd)
         .output()
-        .map_err(|e| format!("tmux를 실행할 수 없습니다: {e}"))?;
+        .map_err(|e| format!("{}{e}", crate::i18n::tr("tmux를 실행할 수 없습니다: ", "Cannot run tmux: ")))?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -529,13 +529,13 @@ impl Terms {
 
     pub fn write(&self, id: u32, data: &str) -> Result<(), String> {
         let mut terms = self.0.lock().unwrap();
-        let t = terms.get_mut(&id).ok_or("터미널이 없습니다")?;
+        let t = terms.get_mut(&id).ok_or(crate::i18n::tr("터미널이 없습니다", "No such terminal"))?;
         t.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())
     }
 
     pub fn resize(&self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
         let terms = self.0.lock().unwrap();
-        let t = terms.get(&id).ok_or("터미널이 없습니다")?;
+        let t = terms.get(&id).ok_or(crate::i18n::tr("터미널이 없습니다", "No such terminal"))?;
         t.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())
     }
 
