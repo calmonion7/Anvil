@@ -199,10 +199,16 @@ pub struct LoopState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Followup {
-    pub text: String,
-    pub source_slug: String,
-    pub source_path: String,
+    pub id: String,
+    pub source: String,
+    pub task: Option<u32>,
     pub date: String,
+    /// open | taken | dismissed
+    pub status: String,
+    pub taken: Option<u32>,
+    /// 본문 첫 줄
+    pub text: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -318,29 +324,91 @@ pub fn split_dated(name: &str) -> (String, String, String) {
 
 // ---------- 후속후보 ----------
 
-fn is_followup_heading(line: &str) -> bool {
-    line.starts_with("## ") && (line.contains("후속") || line.contains("다음 탐구"))
+const FOLLOWUP_MARK: &str = "<!-- followup:";
+
+/// `- 3` / `-` → 양의 정수만 Some, `-`는 None, 그 밖은 Err.
+fn task_num(v: &str) -> Result<Option<u32>, ()> {
+    if v == "-" {
+        return Ok(None);
+    }
+    match v.parse::<u32>() {
+        Ok(n) if n > 0 => Ok(Some(n)),
+        _ => Err(()),
+    }
 }
 
-/// `## `로 시작하고 `후속`/`다음 탐구`가 든 제목 아래, 다음 `## `(또는 `# `)까지의 최상위 `- ` 항목.
-pub fn followups_in(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut on = false;
-    for line in text.lines() {
-        if line.starts_with("## ") || line.starts_with("# ") {
-            on = is_followup_heading(line);
-            continue;
+/// 마커 한 줄 → 본문 없는 Followup. 형식이 어긋나면 None.
+fn parse_followup_marker(line: &str) -> Option<Followup> {
+    let inner = line.trim().strip_prefix("<!--")?.strip_suffix("-->")?.trim();
+    let fields: Vec<&str> = inner.split(" | ").collect();
+    let names = ["followup", "source", "task", "date", "status", "taken"];
+    if fields.len() != names.len() {
+        return None;
+    }
+    let mut v = Vec::new();
+    for (f, n) in fields.iter().zip(names) {
+        v.push(f.trim().strip_prefix(n)?.strip_prefix(':')?.trim().to_string());
+    }
+    let id = &v[0];
+    let hex = id.strip_prefix("fu-")?;
+    if hex.len() != 12 || !hex.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+        return None;
+    }
+    let d = v[3].as_bytes();
+    if d.len() != 10 || d[4] != b'-' || d[7] != b'-' || !d.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+        return None;
+    }
+    let status = v[4].as_str();
+    let taken = task_num(&v[5]).ok()?;
+    if !matches!(status, "open" | "taken" | "dismissed") || (status == "taken") != taken.is_some() || v[1].is_empty() {
+        return None;
+    }
+    Some(Followup {
+        id: id.clone(),
+        source: v[1].clone(),
+        task: task_num(&v[2]).ok()?,
+        date: v[3].clone(),
+        status: status.to_string(),
+        taken,
+        text: String::new(),
+        body: String::new(),
+    })
+}
+
+/// forge 원장(`followups.md`) — 마커부터 다음 마커나 끝까지가 한 항목. 첫 마커 앞은 무시.
+/// 깨진 마커는 그 항목만 건너뛰고 오류 문구로 돌려준다.
+pub fn parse_followups(text: &str) -> (Vec<Followup>, Vec<String>) {
+    let mut items = Vec::new();
+    let mut errors = Vec::new();
+    let mut cur: Option<(Option<Followup>, Vec<&str>)> = None;
+    let finish = |c: Option<(Option<Followup>, Vec<&str>)>, items: &mut Vec<Followup>| {
+        if let Some((Some(mut f), lines)) = c {
+            let body: Vec<String> = lines
+                .iter()
+                .map(|l| l.trim())
+                .enumerate()
+                .map(|(i, l)| if i == 0 { l.strip_prefix("- ").unwrap_or(l).to_string() } else { l.to_string() })
+                .collect();
+            let body = body.join("\n").trim().to_string();
+            f.text = body.lines().next().unwrap_or("").to_string();
+            f.body = body;
+            items.push(f);
         }
-        if on {
-            if let Some(item) = line.strip_prefix("- ") {
-                let item = item.trim();
-                if !item.is_empty() {
-                    out.push(item.to_string());
-                }
+    };
+    for (n, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with(FOLLOWUP_MARK) {
+            finish(cur.take(), &mut items);
+            let f = parse_followup_marker(line);
+            if f.is_none() {
+                errors.push(format!("{} {}: {}", crate::i18n::tr("후속후보 마커가 깨졌습니다 — 줄", "Broken follow-up marker — line"), n + 1, line.trim()));
             }
+            cur = Some((f, vec![]));
+        } else if let Some((_, lines)) = cur.as_mut() {
+            lines.push(line);
         }
     }
-    out
+    finish(cur.take(), &mut items);
+    (items, errors)
 }
 
 // ---------- loop.md ----------
@@ -447,13 +515,9 @@ pub fn snapshot_with_head(project: &Path, head: &Head) -> Snapshot {
     // 기록 영역(최상위 위에 현재 root를 겹침, 같은 이름은 root 우선)
     let layers: Vec<PathBuf> = if root == top { vec![top.clone()] } else { vec![top.clone(), root.clone()] };
     let mut done: std::collections::BTreeMap<String, PathBuf> = Default::default();
-    let mut retros: std::collections::BTreeMap<String, PathBuf> = Default::default();
     for layer in &layers {
         for d in sub_dirs(&layer.join("done")) {
             done.insert(d.clone(), layer.join("done").join(d));
-        }
-        for f in md_files(&layer.join("retro")) {
-            retros.insert(f.clone(), layer.join("retro").join(f));
         }
     }
     s.done_total = done.len();
@@ -463,32 +527,24 @@ pub fn snapshot_with_head(project: &Path, head: &Head) -> Snapshot {
         if let Some(card) = read_task_dir(&mut r, dir, name) {
             cards.push((key, card));
         }
-        for f in ["run.md", "plan.md"] {
-            let p = dir.join(f);
-            if let Some(t) = r.read(&p) {
-                push_followups(&mut s.followups, &t, name, r.rel(&p));
-            }
-        }
     }
     cards.sort_by(|a, b| b.0.cmp(&a.0));
     s.done = cards.into_iter().map(|c| c.1).collect();
-    for (file, p) in &retros {
-        if let Some(t) = r.read(p) {
-            push_followups(&mut s.followups, &t, file.trim_end_matches(".md"), r.rel(p));
+
+    // 후속후보 원장(현재 root만 — 겹쳐 읽지 않음)
+    let ledger = root.join("followups.md");
+    if let Some(t) = r.read(&ledger) {
+        let (items, errs) = parse_followups(&t);
+        for e in errs {
+            r.fail(&ledger, &e);
         }
+        s.followups = items;
     }
     s.followups.sort_by(|a, b| b.date.cmp(&a.date));
 
     s.errors = r.errors;
     s.headline = headline(&s);
     s
-}
-
-fn push_followups(out: &mut Vec<Followup>, text: &str, dated_name: &str, source_path: String) {
-    let (_, date, slug) = split_dated(dated_name);
-    for item in followups_in(text) {
-        out.push(Followup { text: item, source_slug: slug.clone(), source_path: source_path.clone(), date: date.clone() });
-    }
 }
 
 fn read_active(r: &mut Reader, root: &Path, loop_text: Option<&str>) -> Option<ActiveTask> {

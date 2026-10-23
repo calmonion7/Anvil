@@ -39,6 +39,36 @@ pub fn login_path() -> &'static str {
     })
 }
 
+/// `.claude`(플러그인 · 슬래시 명령)가 있는 홈. 윈도우는 claude가 WSL 안에 있으므로 WSL 홈(`\\wsl.localhost\<배포판>\home\<사용자>`).
+pub fn claude_home() -> PathBuf {
+    static HOME: OnceLock<PathBuf> = OnceLock::new();
+    HOME.get_or_init(|| {
+        if cfg!(windows) {
+            let wsl = Command::new("wsl.exe").args(["--", "bash", "-lc", "wslpath -w ~"]).output();
+            if let Some(p) = wsl.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
+                if !p.is_empty() {
+                    return PathBuf::from(p);
+                }
+            }
+        }
+        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default().into()
+    })
+    .clone()
+}
+
+/// claude CLI 실행(인자는 코드에 박힌 고정 문자열만). 윈도우는 WSL 안의 claude를 로그인 셸로.
+pub fn claude_command(args: &[&str]) -> Command {
+    if cfg!(windows) {
+        let mut c = Command::new("wsl.exe");
+        c.args(["--", "bash", "-lc", &format!("claude {}", args.join(" "))]);
+        c
+    } else {
+        let mut c = Command::new("claude");
+        c.args(args).env("PATH", login_path());
+        c
+    }
+}
+
 /// GUI 앱에는 LANG이 없어 tmux가 한글을 `_`로 바꾼다. 없으면 UTF-8 로캘을 준다.
 fn lang() -> String {
     std::env::var("LANG").ok().filter(|l| l.contains("UTF-8")).unwrap_or_else(|| "en_US.UTF-8".into())
@@ -137,11 +167,25 @@ if [ -f "$f" ]; then
 fi
 printf '{"state":"%s","session_id":"%s","ts":%s}\n' "$state" "$sid" "$(date +%s)" > "$f.tmp" && mv "$f.tmp" "$f"
 # 입력 대기로 바뀌었는데 앱이 꺼져 있으면 훅이 직접 알린다(앱이 떠 있으면 앱이 알린다).
+# WSL(윈도우 앱): app.pid는 윈도우 pid라 kill -0으로 안 보인다 → tasklist.exe, 알림은 powershell.exe 토스트.
+app_alive() {
+  [ -n "$pid" ] || return 1
+  if command -v tasklist.exe >/dev/null 2>&1; then
+    tasklist.exe /FI "PID eq $pid" /NH 2>/dev/null | grep -qw "$pid"
+  else
+    kill -0 "$pid" 2>/dev/null
+  fi
+}
 if [ "$state" = waiting ] && [ "$prev" != waiting ]; then
-  pid="$(cat "$dir/app.pid" 2>/dev/null)"
-  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
-    msg="$(tr -d '"\\' < "$dir/summary/$name.txt" 2>/dev/null)"
-    osascript -e "display notification \"${msg:-입력 대기}\" with title \"Anvil\"" >/dev/null 2>&1 &
+  pid="$(tr -dc '0-9' < "$dir/app.pid" 2>/dev/null)"
+  if ! app_alive; then
+    msg="$(tr -d "\"\\\\'\$\`" < "$dir/summary/$name.txt" 2>/dev/null)"
+    msg="${msg:-입력 대기}"
+    if command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -NonInteractive -Command "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null; \$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \$n = \$x.GetElementsByTagName('text'); \$n.Item(0).AppendChild(\$x.CreateTextNode('Anvil')) > \$null; \$n.Item(1).AppendChild(\$x.CreateTextNode('$msg')) > \$null; [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new(\$x))" >/dev/null 2>&1 &
+    else
+      osascript -e "display notification \"$msg\" with title \"Anvil\"" >/dev/null 2>&1 &
+    fi
   fi
 fi
 exit 0
@@ -658,6 +702,54 @@ mod tests {
     }
 
     /// 상태줄 래퍼: 모델·effort(객체/옛 문자열)를 기록하고, 원래 상태줄 명령에 같은 입력을 넘겨 출력을 그대로 낸다.
+    #[test]
+    fn hook_notifies_only_when_app_is_off_wsl_and_mac() {
+        use std::os::unix::fs::PermissionsExt;
+        // 가짜 tasklist.exe · powershell.exe · osascript — 부르면 기록만 남긴다(실제 알림 없음).
+        let run = |wsl: bool, app_running: bool| -> String {
+            let d = tempfile::tempdir().unwrap();
+            let bin = d.path().join("bin");
+            std::fs::create_dir_all(bin.join("..").join("summary")).unwrap();
+            std::fs::create_dir_all(&bin).unwrap();
+            let log = d.path().join("log");
+            let stub = |name: &str, body: &str| {
+                let p = bin.join(name);
+                std::fs::write(&p, format!("#!/bin/bash\n{body}\n")).unwrap();
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            };
+            stub("osascript", &format!("echo \"osascript $*\" >> '{}'", log.display()));
+            if wsl {
+                let out = if app_running { "Anvil.exe 4242 Console 1 10,000 K" } else { "INFO: No tasks" };
+                stub("tasklist.exe", &format!("echo '{out}'"));
+                stub("powershell.exe", &format!("echo \"powershell $*\" >> '{}'", log.display()));
+            }
+            let pid = if wsl { "4242".to_string() } else if app_running { std::process::id().to_string() } else { "999999".into() };
+            std::fs::write(d.path().join("app.pid"), pid).unwrap();
+            std::fs::write(d.path().join("summary/s.txt"), "BibleMap 계획 세션 · 입력 대기 — it's").unwrap();
+            let hook = d.path().join("anvil-hook.sh");
+            std::fs::write(&hook, HOOK_SCRIPT).unwrap();
+            let mut child = Command::new("/bin/bash")
+                .arg(&hook)
+                .arg("waiting")
+                .env("ANVIL_SESSION", "s")
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(b"{}").unwrap();
+            assert!(child.wait().unwrap().success());
+            std::thread::sleep(std::time::Duration::from_millis(300)); // 알림은 백그라운드(&)로 뜬다
+            std::fs::read_to_string(&log).unwrap_or_default()
+        };
+        assert_eq!(run(true, true), "", "WSL: 앱이 켜져 있으면 훅은 알리지 않는다");
+        let off = run(true, false);
+        assert!(off.starts_with("powershell") && off.contains("ToastNotificationManager"), "{off}");
+        assert!(off.contains("BibleMap 계획 세션 · 입력 대기 — its"), "작은따옴표는 지워 PowerShell 문자열이 깨지지 않게: {off}");
+        assert!(!off.contains("osascript"));
+        assert_eq!(run(false, true), "", "macOS: 앱이 켜져 있으면 알리지 않는다");
+        assert!(run(false, false).starts_with("osascript"));
+    }
+
     #[test]
     fn statusline_wrapper_records_model_and_passes_through() {
         use std::os::unix::fs::PermissionsExt;

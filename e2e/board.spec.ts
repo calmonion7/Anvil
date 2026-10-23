@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("(b) 위쪽은 띠·칩 한 덩어리, 그 아래 전부 터미널, 위아래 경계 없음, 칩 숫자 = 목록 수", async ({ page }) => {
-  await expect(chip(page, "후속후보")).toHaveText(/후속후보 2$/); // 3건 중 숨김 1건 제외
+  await expect(chip(page, "후속후보")).toHaveText(/후속후보 2$/); // 원장 4건 중 open 2건만
   await expect(chip(page, "최근 완료")).toHaveText(/최근 완료 1$/);
   await expect(chip(page, "백로그")).toHaveText(/백로그 2$/);
   await expect(page.locator('[role="separator"][aria-orientation="horizontal"]')).toHaveCount(0);
@@ -25,18 +25,40 @@ test("(b) 위쪽은 띠·칩 한 덩어리, 그 아래 전부 터미널, 위아�
   expect(term.height).toBeGreaterThan(820 * 0.6);
 });
 
-test("(c) 후속후보 팝업: 숨김은 유지·숫자 감소, 착수는 닫고 계획 세션에 fg-ask", async ({ page }) => {
+test("(c) 후속후보 팝업: 위는 open(최신순)에 착수·기각, 처리됨은 접혀 있다", async ({ page }) => {
   await chip(page, "후속후보").click();
   const dlg = page.getByRole("dialog", { name: "후속후보" });
   await expect(dlg).toBeVisible();
+  await expect(dlg.getByRole("button", { name: "착수" })).toHaveCount(2);
+  await expect(dlg.getByRole("button", { name: "기각" })).toHaveCount(2);
+  await expect(dlg.locator(".tt").first()).toHaveText("후속 하나");
+  await expect(dlg).not.toContainText("착수한 후속");
 
-  await dlg.getByRole("button", { name: "숨김" }).first().click();
-  await expect(dlg).toBeVisible();
-  await expect(chip(page, "후속후보")).toHaveText(/후속후보 1$/);
+  // 여러 줄 본문은 펼쳐 본다
+  await dlg.getByRole("button", { name: /후속 하나/ }).click();
+  await expect(dlg).toContainText("근거: 펼쳐 보는 줄");
 
+  // 처리됨: taken은 → #N, dismissed는 본문
+  await dlg.getByRole("button", { name: "처리됨 2건" }).click();
+  await expect(dlg).toContainText("→ #1");
+  await dlg.getByRole("button", { name: /기각한 후속/ }).click();
+  await expect(dlg).toContainText("사유: 대체됨");
+  await dlg.getByRole("button", { name: /착수한 후속/ }).click();
+  await expect(page.getByRole("dialog", { name: /plan · #1/ })).toContainText("문서 .forge/done/d1/plan.md");
+});
+
+test("(c) 후속후보 착수·기각은 닫고 계획 세션 입력창에 원장 id로 fg-ask", async ({ page }) => {
+  await chip(page, "후속후보").click();
+  let dlg = page.getByRole("dialog", { name: "후속후보" });
   await dlg.getByRole("button", { name: "착수" }).first().click();
   await expect(dlg).toHaveCount(0);
-  expect((await fills(page)).at(-1)).toMatchObject({ role: "plan", text: expect.stringMatching(/^\/forge:fg-ask /) });
+  expect((await fills(page)).at(-1)).toMatchObject({ role: "plan", text: "/forge:fg-ask 후속후보 fu-000000000001 착수: 후속 하나" });
+
+  await chip(page, "후속후보").click();
+  dlg = page.getByRole("dialog", { name: "후속후보" });
+  await dlg.getByRole("button", { name: "기각" }).nth(1).click();
+  await expect(dlg).toHaveCount(0);
+  expect((await fills(page)).at(-1)).toMatchObject({ role: "plan", text: "/forge:fg-ask 후속후보 fu-000000000002 기각 — 사유: " });
 });
 
 test("(c) 백로그 팝업: 실행은 닫고 실행 세션에 fg-run", async ({ page }) => {

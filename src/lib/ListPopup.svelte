@@ -3,7 +3,7 @@
   import { dayLabel, splitTitle, inlineCode, norm, priorityLabel } from "./format";
   import { t } from "./i18n.svelte";
 
-  /** 건수 칩이 여는 목록 팝업 — 후속후보 · 최근 완료 · 백로그. 착수·실행은 팝업을 닫고, 숨김·되돌리기·문서 열기는 유지한다. */
+  /** 건수 칩이 여는 목록 팝업 — 후속후보 · 최근 완료 · 백로그. 착수·기각·실행은 팝업을 닫고, 펼치기·문서 열기는 유지한다. */
   let {
     kind,
     snap,
@@ -12,7 +12,6 @@
     actions,
     planBlocked = null,
     runBlocked = null,
-    hidden = new Set<string>(),
   }: {
     kind: ListKind;
     snap: Snapshot;
@@ -23,19 +22,22 @@
     planBlocked?: string | null;
     /** 실행 세션이 작업 중이면 그 이유(`#N 실행 중`) — '실행'을 끈다 */
     runBlocked?: string | null;
-    /** 숨긴 후속후보 키(`출처 경로\n문장`) */
-    hidden?: Set<string>;
   } = $props();
 
   const DONE_PAGE = 20;
   const titles = (k: ListKind): string =>
     ({ followups: t("후속후보", "Follow-ups"), done: t("최근 완료", "Recently done"), backlog: t("백로그", "Backlog") })[k];
   let showAllDone = $state(false);
-  let showHidden = $state(false);
+  let showClosed = $state(false);
+  let expanded = $state<Record<string, boolean>>({});
 
-  const hideKey = (f: Followup) => `${f.sourcePath}\n${f.text}`;
-  let hiddenCount = $derived(snap.followups.filter((f) => hidden.has(hideKey(f))).length);
-  let followupsShown = $derived(snap.followups.filter((f) => showHidden || !hidden.has(hideKey(f))));
+  // 원장 그대로 — 위는 open(날짜 최신순), 접힌 「처리됨」에 taken · dismissed
+  let openItems = $derived(snap.followups.filter((f) => f.status === "open"));
+  let closedItems = $derived(snap.followups.filter((f) => f.status !== "open"));
+  /** taken이 가리키는 작업의 문서(있을 때만) */
+  const docOf = (n: number | null): string | null =>
+    n === null ? null : [...snap.backlog, ...snap.executed, ...snap.done].find((c) => c.task === n)?.path ?? null;
+  const hasMore = (f: Followup) => f.body.includes("\n");
   let doneShown = $derived(showAllDone ? snap.done : snap.done.slice(0, DONE_PAGE));
 
   function verifiedMark(v: string | null): { icon: string; label: string; cls: string } {
@@ -64,32 +66,51 @@
     <div class="ch">
       <span class="b">{titles(kind)}</span>
       <span class="sp"></span>
-      {#if kind === "followups" && hiddenCount}
-        <button class="more" onclick={() => (showHidden = !showHidden)}>{showHidden ? t("숨긴 항목 감추기", "Hide hidden items") : t(`숨긴 항목 보기 (${hiddenCount})`, `Show hidden items (${hiddenCount})`)}</button>
-      {/if}
       <button class="x" aria-label={t("닫기", "Close")} onclick={onClose}>×</button>
     </div>
 
     <div class="list">
       {#if kind === "followups"}
-        {#each followupsShown as f, i (f.sourcePath + i)}
-          {@const isHidden = hidden.has(hideKey(f))}
-          <div class="item" class:dim={isHidden}>
-            <button class="open" onclick={() => onOpen(f.sourcePath, f.sourceSlug)} title={f.text}>
-              <span class="tt">{@html inlineCode(f.text)}</span>
-              <span class="mt">← {f.sourceSlug}{f.date ? ` · ${dayLabel(f.date)}` : ""}</span>
-            </button>
-            {#if !isHidden}
+        {#snippet more(f: Followup)}
+          {#if expanded[f.id]}<pre class="body">{f.body}</pre>{/if}
+        {/snippet}
+        {#each openItems as f (f.id)}
+          <div class="fu">
+            <div class="item">
+              <button class="open" disabled={!hasMore(f)} aria-expanded={hasMore(f) ? !!expanded[f.id] : undefined} onclick={() => (expanded[f.id] = !expanded[f.id])} title={f.body}>
+                <span class="tt">{@html inlineCode(f.text)}</span>
+                <span class="mt">← {f.source}{f.date ? ` · ${dayLabel(f.date)}` : ""}</span>
+              </button>
               <button class="btn sm" disabled={!!planBlocked} title={planBlocked ?? t("계획 세션 입력창에 /forge:fg-ask를 채웁니다", "Fills /forge:fg-ask into the plan session input")} onclick={() => { actions.start(f); onClose(); }}>{t("착수", "Start")}</button>
-            {/if}
-            <button class="btn sm quiet" onclick={() => actions.setHidden(f, !isHidden)}>{isHidden ? t("되돌리기", "Unhide") : t("숨김", "Hide")}</button>
+              <button class="btn sm quiet" disabled={!!planBlocked} title={planBlocked ?? t("계획 세션 입력창에 기각 사유를 묻는 /forge:fg-ask를 채웁니다", "Fills a dismissal /forge:fg-ask into the plan session input")} onclick={() => { actions.dismiss(f); onClose(); }}>{t("기각", "Dismiss")}</button>
+            </div>
+            {@render more(f)}
           </div>
         {:else}
           <div class="emptycell">
             <span class="t3">{t("비어 있음", "Empty")}</span>
-            <span class="ink2">{t("회고나 실행 기록에 남은 후속후보가 없습니다.", "No follow-ups left in retros or run logs.")}</span>
+            <span class="ink2">{t("열린 후속후보가 없습니다.", "No open follow-ups.")}</span>
           </div>
         {/each}
+        {#if closedItems.length}
+          <button class="more" aria-expanded={showClosed} onclick={() => (showClosed = !showClosed)}>
+            {showClosed ? t("처리됨 접기", "Collapse handled") : t(`처리됨 ${closedItems.length}건`, `Handled (${closedItems.length})`)}
+          </button>
+          {#if showClosed}
+            {#each closedItems as f (f.id)}
+              {@const doc = f.status === "taken" ? docOf(f.taken) : null}
+              <div class="fu">
+                <div class="item dim">
+                  <button class="open" onclick={() => (doc ? onOpen(doc, `plan · #${f.taken}`) : (expanded[f.id] = !expanded[f.id]))} title={f.body}>
+                    <span class="tt">{@html inlineCode(f.text)}</span>
+                    <span class="mt">{f.status === "taken" ? `→ #${f.taken}` : t("기각", "Dismissed")} · {f.source}{f.date ? ` · ${dayLabel(f.date)}` : ""}</span>
+                  </button>
+                </div>
+                {#if f.status === "dismissed" || !doc}{@render more(f)}{/if}
+              </div>
+            {/each}
+          {/if}
+        {/if}
       {:else if kind === "done"}
         {#each doneShown as d (d.path)}
           {@const v = verifiedMark(d.verified)}
@@ -154,6 +175,9 @@
   .mt { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
   .pri-h { color: var(--ink); font-weight: 600; }
   .quiet { color: var(--muted); }
+  .fu { display: flex; flex-direction: column; gap: 4px; }
+  .open:disabled { cursor: default; }
+  .body { margin: 0 0 4px 12px; padding: 8px 12px; white-space: pre-wrap; font: inherit; font-size: 12px; color: var(--ink2); background: var(--surface); border-left: 2px solid var(--line); }
   .more { padding: 4px; font-size: 11px; color: var(--accent); background: none; border: 0; text-align: left; cursor: pointer; }
   .emptycell { padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px dashed var(--line); border-radius: 6px; }
 </style>

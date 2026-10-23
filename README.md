@@ -34,7 +34,7 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
   wsl -- bash -lc "claude"                     # 한 번 로그인
   wsl -- bash -lc "claude plugin marketplace add gyuha/forge && claude plugin install forge@forge"
   ```
-  프로젝트 폴더는 윈도우 경로(`C:\…`)든 WSL 경로(`\\wsl$\…`)든 된다. 앱이 꺼져 있을 때의 알림은 없다(앱이 켜져 있으면 윈도우 알림으로 뜬다).
+  프로젝트 폴더는 윈도우 경로(`C:\…`)든 WSL 경로(`\\wsl$\…`)든 된다. 알림은 윈도우 알림으로 뜬다(앱이 꺼져 있어도).
 - **Linux** (`.AppImage` / `.deb`, 실험용): tmux · claude CLI · forge를 직접 설치한다(`sudo apt install tmux jq` 등).
 
 설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.

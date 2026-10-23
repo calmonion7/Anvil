@@ -18,9 +18,10 @@ const alpha = {
   done: [{ task: 1, slug: "d1", title: "끝난 일", date: "2026-10-17", verified: "yes", retro: "skipped", path: ".forge/done/d1/plan.md" }],
   doneTotal: 1,
   followups: [
-    { text: "후속 하나", sourceSlug: "d1", sourcePath: ".forge/done/d1/run.md", date: "2026-10-17" },
-    { text: "후속 둘", sourceSlug: "d1", sourcePath: ".forge/done/d1/run.md", date: "2026-10-17" },
-    { text: "숨긴 후속", sourceSlug: "d1", sourcePath: ".forge/done/d1/run.md", date: "2026-10-17" },
+    { id: "fu-000000000001", source: "d1", task: 1, date: "2026-10-18", status: "open", taken: null, text: "후속 하나", body: "후속 하나\n근거: 펼쳐 보는 줄" },
+    { id: "fu-000000000002", source: "d1", task: 1, date: "2026-10-17", status: "open", taken: null, text: "후속 둘", body: "후속 둘" },
+    { id: "fu-000000000003", source: "d1", task: 1, date: "2026-10-16", status: "taken", taken: 1, text: "착수한 후속", body: "착수한 후속" },
+    { id: "fu-000000000004", source: "d1", task: 1, date: "2026-10-15", status: "dismissed", taken: null, text: "기각한 후속", body: "기각한 후속\n사유: 대체됨" },
   ],
   errors: [], drivingSession: null,
 };
@@ -36,7 +37,6 @@ export async function mockIpc(page: Page) {
   await page.addInitScript(
     ({ projects }) => {
       const w = window as any;
-      let hidden = [{ project: "/p/alpha", source: ".forge/done/d1/run.md", text: "숨긴 후속" }];
       let cb = 0;
       w.__calls = [];
       // 이벤트 주입: listen이 등록한 콜백을 __emit(event, payload)로 부른다.
@@ -68,12 +68,6 @@ export async function mockIpc(page: Page) {
               listeners.push({ event: args.event, handler: args.handler });
               return args.handler;
             case "session_models": return {};
-            case "hidden_followups": return hidden;
-            case "set_followup_hidden":
-              hidden = args.hidden
-                ? [...hidden, args.item]
-                : hidden.filter((h) => !(h.source === args.item.source && h.text === args.item.text));
-              return hidden;
             case "session_fill": return `${args.project}-${args.role}`;
             case "read_doc": return `# 문서 ${args.rel}`;
             case "slash_commands":

@@ -163,8 +163,6 @@
   let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
   let mainEl = $state<HTMLElement>();
   let lastFill = $state<{ role: Role; text: string; n: number }>({ role: "run", text: "", n: 0 });
-  /** 숨긴 후속후보(앱 데이터 hidden-followups.json) */
-  let hiddenItems = $state<{ project: string; source: string; text: string }[]>([]);
 
   let current = $derived(projects.find((p) => p.path === selected) ?? projects[0] ?? null);
   /** 프로젝트 경로 → 설치된 슬래시 명령. 프로젝트마다 처음 한 번만 읽는다. */
@@ -198,12 +196,7 @@
     const s = sessionOf(current.path, "plan");
     return s?.alive && s.state === "working" ? t("계획 세션 작업 중", "Plan session busy") : null;
   });
-  let hiddenSet = $derived(
-    new Set(hiddenItems.filter((h) => h.project === current?.path).map((h) => `${h.source}\n${h.text}`)),
-  );
-  let followupCount = $derived(
-    current ? current.followups.filter((f) => !hiddenSet.has(`${f.sourcePath}\n${f.text}`)).length : 0,
-  );
+  let followupCount = $derived(current ? current.followups.filter((f) => f.status === "open").length : 0);
 
   async function fill(role: Role, text: string) {
     if (!current) return;
@@ -220,14 +213,8 @@
 
   const actions: BoardActions = {
     run: (p) => fill("run", p.task == null ? "/forge:fg-run" : `/forge:fg-run #${p.task}`),
-    start: (f) => fill("plan", t(`/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`, `/forge:fg-ask ${f.text} (source: ${f.sourceSlug})`)),
-    setHidden: async (f, hidden) => {
-      if (!current) return;
-      hiddenItems = await invoke("set_followup_hidden", {
-        item: { project: current.path, source: f.sourcePath, text: f.text },
-        hidden,
-      });
-    },
+    start: (f) => fill("plan", t(`/forge:fg-ask 후속후보 ${f.id} 착수: ${f.text}`, `/forge:fg-ask follow-up ${f.id} take: ${f.text}`)),
+    dismiss: (f) => fill("plan", t(`/forge:fg-ask 후속후보 ${f.id} 기각 — 사유: `, `/forge:fg-ask follow-up ${f.id} dismiss — reason: `)),
   };
 
   /** 다른 프로젝트에서 입력을 기다리는 세션(상태줄 🔔) */
@@ -300,7 +287,6 @@
         await loadNames(list);
         sessions = await invoke<Record<string, SessionState>>("session_states");
         models = await invoke<Record<string, ModelInfo>>("session_models");
-        hiddenItems = await invoke("hidden_followups");
       })
       .catch((e) => (loadError = String(e)))
       .finally(() => (loading = false));
@@ -683,7 +669,7 @@
           {/each}
         {/if}
         {#if listOpen}
-          <ListPopup kind={listOpen} snap={current} onOpen={openDoc} onClose={() => (listOpen = null)} {actions} {planBlocked} {runBlocked} hidden={hiddenSet} />
+          <ListPopup kind={listOpen} snap={current} onOpen={openDoc} onClose={() => (listOpen = null)} {actions} {planBlocked} {runBlocked} />
         {/if}
         {#if currentTab}
           <div class="doc" role="dialog" aria-label={currentTab.label}>
@@ -702,7 +688,7 @@
       </div>
       <footer class="status">
         <span>{current.name}{current.root.branch ? ` · ${current.root.branch}` : ""}</span>
-        <span>{t("백로그", "Backlog")} {current.backlog.length} · {t("후속후보", "Follow-ups")} {current.followups.length}</span>
+        <span>{t("백로그", "Backlog")} {current.backlog.length} · {t("후속후보", "Follow-ups")} {followupCount}</span>
         {#if waitingElsewhere.length}
           <span class="bell">🔔 {t(`${waitingElsewhere[0]}이 입력을 기다립니다${waitingElsewhere.length > 1 ? ` 외 ${waitingElsewhere.length - 1}` : ""}`, `${waitingElsewhere[0]}${waitingElsewhere.length > 1 ? ` and ${waitingElsewhere.length - 1} more` : ""} waiting for input`)}</span>
         {/if}
