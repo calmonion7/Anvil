@@ -70,8 +70,16 @@ pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> 
         if !probe("wsl.exe", &["--", "true"]) || !probe("wsl.exe", &["--", "tmux", "-V"]) {
             return Some("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`");
         }
-    } else if !probe("tmux", &["-V"]) {
-        return Some("tmux 설치 필요: `brew install tmux`");
+        if !probe("wsl.exe", &["--", "claude", "--version"]) {
+            return Some("WSL에 claude CLI 설치 필요: `wsl -- npm install -g @anthropic-ai/claude-code` 후 `wsl -- claude`로 로그인");
+        }
+    } else {
+        if !probe("tmux", &["-V"]) {
+            return Some("tmux 설치 필요: `brew install tmux`");
+        }
+        if !probe("claude", &["--version"]) {
+            return Some("claude CLI 설치 필요: `npm install -g @anthropic-ai/claude-code` 후 터미널에서 `claude`로 로그인");
+        }
     }
     None
 }
@@ -535,6 +543,13 @@ mod tests {
         assert_eq!(backend_missing(true, all), None);
         assert!(backend_missing(false, none).is_some());
         assert_eq!(backend_missing(false, all), None);
+    }
+
+    #[test]
+    fn backend_missing_reports_claude_cli() {
+        let no_claude = |p: &str, a: &[&str]| p != "claude" && !a.contains(&"claude");
+        assert!(backend_missing(false, no_claude).unwrap().contains("claude CLI 설치 필요"));
+        assert!(backend_missing(true, no_claude).unwrap().contains("WSL에 claude CLI"));
     }
 
     #[test]
