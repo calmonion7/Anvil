@@ -34,7 +34,11 @@
   let alive = $derived(!!session?.alive);
   /** 머리줄 `[Anvil] [BibleMap] PLAN · Opus 5.5 · high` — 기록 전에는 띄울 때 모델만, effort는 숨긴다 */
   let heading = $derived(
-    title ? [title[0], (alive && live?.model) || title[1], alive ? live?.effort : null].filter(Boolean).join(" · ") : "",
+    title
+      ? [title[0], (alive && live?.model) || (title[1] === "default" ? "claude 기본값" : title[1]), alive ? live?.effort : null]
+          .filter(Boolean)
+          .join(" · ")
+      : "",
   );
 
   async function start() {

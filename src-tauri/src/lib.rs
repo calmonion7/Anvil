@@ -236,10 +236,25 @@ fn session_names(project: String) -> [String; 2] {
 }
 
 /// 계획·실행 세션에 붙이는 claude 이름과 띄울 때 모델(`[이름, 모델]` 두 개). 이름 규칙은 `session::session_title` 한 곳.
+/// 모델은 설정값(`default`면 claude 기본값).
 #[tauri::command]
-fn session_titles(project: String) -> [(String, &'static str); 2] {
+fn session_titles(app: AppHandle, project: String) -> [(String, String); 2] {
     let p = Path::new(&project);
-    [session::session_title(p, "plan"), session::session_title(p, "run")]
+    let f = files(&app);
+    ["plan", "run"].map(|r| (session::session_title(p, r).0, session::role_model(&f, r)))
+}
+
+/// 설정 > 역할별 모델 `{plan, run}`
+#[tauri::command]
+fn model_settings(app: AppHandle) -> HashMap<String, String> {
+    let f = files(&app);
+    ["plan", "run"].into_iter().map(|r| (r.to_string(), session::role_model(&f, r))).collect()
+}
+
+/// 역할별 모델 저장 — 새로 여는 세션부터 적용
+#[tauri::command]
+fn set_model_setting(app: AppHandle, role: String, model: String) -> Result<(), String> {
+    session::set_role_model(&files(&app), &role, &model)
 }
 
 #[tauri::command]
@@ -516,6 +531,8 @@ pub fn run() {
             session_states,
             session_names,
             session_titles,
+            model_settings,
+            set_model_setting,
             session_models,
             session_start,
             session_kill,

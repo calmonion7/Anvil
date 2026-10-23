@@ -31,6 +31,26 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
 설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.
 
+## 쓰면서 알아둘 것
+
+- **화면은 한국어 전용**이다.
+- **처음 쓰는 프로젝트**: forge가 없는 프로젝트는 보드 위 띠의 [계획 세션에서 시작] 으로 `/forge:fg-ask` 를 채워 첫 계획을 만든다.
+- **모델**: 사이드바 아래 [⚙ 설정] 에서 계획 · 실행 세션 모델을 고른다(기본 opus · sonnet). 쓰는 요금제에서 opus를 못 쓰면 "claude 기본값"이나 sonnet으로 바꾼다. 새로 여는 세션부터 적용된다.
+- **사용량**: 세션마다 claude가 돈다 — 쓰는 만큼 Claude 요금제 사용량이 나간다.
+- **앱을 닫아도 세션은 남는다**(다시 열면 이어진다). 세션을 끝내려면 세션 창의 [세션 종료].
+
+## 문제가 생기면
+
+[GitHub Issues](https://github.com/calmonion7/Anvil/issues) 에 남긴다. 앱 데이터 · 로그는 `~/Library/Application Support/com.taebro.anvil/` 에 있다.
+
+## 삭제
+
+1. 남은 세션 끄기: `tmux -L anvil kill-server`
+2. `/Applications/Anvil.app` 을 휴지통으로
+3. 데이터까지 지우려면: `rm -rf ~/Library/Application\ Support/com.taebro.anvil`
+
+프로젝트의 `.forge/` 는 Anvil이 만들거나 지우지 않는다(forge 플러그인 몫).
+
 ## 개발
 
 ```
