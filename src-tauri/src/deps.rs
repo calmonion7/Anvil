@@ -58,8 +58,12 @@ pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool) -> Vec<Need> 
 }
 
 /// 빠진 것만 차례로 설치하는 bash 스크립트. tmux는 Homebrew로만 설치한다.
-pub fn install_script(needs: &[Need], has_brew: bool) -> Result<String, String> {
+/// jq는 선택(없어도 동작, 모델 표시만 빠짐) — 띠는 띄우지 않고, brew가 있으면 같이 깔되 실패해도 넘어간다.
+pub fn install_script(needs: &[Need], has_brew: bool, has_jq: bool) -> Result<String, String> {
     let mut lines = vec!["set -e".to_string()];
+    if has_brew && !has_jq {
+        lines.push("brew install jq || true".into());
+    }
     for n in needs {
         match n {
             Need::Tmux if !has_brew => {
@@ -103,7 +107,7 @@ pub fn status() -> DepsStatus {
 /// 빠진 것을 설치한다. 실패하면 출력 끝부분을 돌려준다.
 pub fn install() -> Result<(), String> {
     let needs = status().needs;
-    let script = install_script(&needs, probe("brew", &["--version"]))?;
+    let script = install_script(&needs, probe("brew", &["--version"]), probe("jq", &["--version"]))?;
     let out = Command::new("/bin/bash")
         .args(["-c", &script])
         .env("PATH", login_path())
@@ -149,7 +153,7 @@ mod tests {
 
     #[test]
     fn deps_install_script_in_order() {
-        let s = install_script(&[Need::Tmux, Need::Claude, Need::Forge], true).unwrap();
+        let s = install_script(&[Need::Tmux, Need::Claude, Need::Forge], true, true).unwrap();
         let tmux = s.find("brew install tmux").unwrap();
         let claude = s.find("claude.ai/install.sh").unwrap();
         let forge = s.find("plugin install forge@forge").unwrap();
@@ -159,7 +163,14 @@ mod tests {
 
     #[test]
     fn deps_install_script_needs_brew_for_tmux() {
-        assert!(install_script(&[Need::Tmux], false).unwrap_err().contains("brew.sh"));
-        assert!(!install_script(&[Need::Claude], false).unwrap().contains("brew"));
+        assert!(install_script(&[Need::Tmux], false, false).unwrap_err().contains("brew.sh"));
+        assert!(!install_script(&[Need::Claude], false, false).unwrap().contains("brew"));
+    }
+
+    #[test]
+    fn deps_install_script_adds_optional_jq() {
+        assert!(install_script(&[Need::Claude], true, false).unwrap().contains("brew install jq || true"));
+        assert!(!install_script(&[Need::Claude], true, true).unwrap().contains("jq"));
+        assert!(!install_script(&[Need::Claude], false, false).unwrap().contains("jq"));
     }
 }

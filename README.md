@@ -15,7 +15,7 @@ Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다.
 | **tmux** | 세션 유지 | `brew install tmux` |
 | **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | `curl -fsSL https://claude.ai/install.sh \| bash` 후 터미널에서 `claude` 한 번 실행해 로그인 |
 | **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
-| jq (선택) | 세션별 모델 · effort 표시 | `brew install jq` |
+| jq (선택) | 세션별 모델 · effort 표시 | `brew install jq` ([설치] 때 Homebrew가 있으면 같이 깐다) |
 
 forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
