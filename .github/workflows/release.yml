@@ -52,6 +52,14 @@ jobs:
 
       - run: npm ci
 
+      - name: 릴리스 노트
+        id: notes
+        shell: bash
+        run: |
+          f="docs/releases/${GITHUB_REF_NAME}.md"
+          [ -s "$f" ] || { echo "::error::릴리스 노트 $f 가 없다"; exit 1; }
+          { echo "body<<__NOTES__"; cat "$f"; echo; echo "__NOTES__"; } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,6 +68,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Anvil ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
