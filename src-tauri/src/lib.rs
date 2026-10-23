@@ -1,3 +1,4 @@
+pub mod deps;
 pub mod forge;
 pub mod session;
 pub mod slash;
@@ -347,10 +348,26 @@ fn slash_commands(project: String) -> Vec<String> {
     slash::collect(&Path::new(&home).join(".claude"), Some(Path::new(&project)))
 }
 
-/// 세션 백엔드(tmux, 윈도우는 WSL tmux)가 없으면 안내 문구
+/// 준비물(tmux · claude CLI · forge) 확인 — 빠졌으면 띠 문구와 [설치] 가능 여부
 #[tauri::command]
-fn backend_status() -> Option<&'static str> {
-    session::backend_status()
+async fn deps_status() -> deps::DepsStatus {
+    tauri::async_runtime::spawn_blocking(deps::status).await.unwrap_or(deps::DepsStatus {
+        needs: vec![],
+        message: None,
+        installable: false,
+    })
+}
+
+/// 빠진 준비물 설치(사용자가 [설치]를 눌렀을 때만)
+#[tauri::command]
+async fn deps_install() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(deps::install).await.map_err(|e| e.to_string())?
+}
+
+/// 터미널에서 claude를 열어 로그인
+#[tauri::command]
+fn deps_login() -> Result<(), String> {
+    deps::open_login()
 }
 
 #[tauri::command]
@@ -499,7 +516,9 @@ pub fn run() {
             hidden_followups,
             set_followup_hidden,
             slash_commands,
-            backend_status,
+            deps_status,
+            deps_install,
+            deps_login,
             updater::updater_check,
             updater::updater_install
         ])
