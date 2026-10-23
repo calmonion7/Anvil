@@ -8,14 +8,14 @@ forge(Claude Code 플러그인)로 진행하는 프로젝트들의 진행 상황
 
 ## 준비물
 
-Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 상단에 안내 띠가 뜬다.
+Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 상단에 안내 띠가 뜨고, macOS에서는 띠의 **[설치]** 로 빠진 것만 한 번에 설치한다(tmux는 Homebrew가 있어야 한다). claude CLI를 새로 설치했으면 이어서 뜨는 **[로그인]** 으로 터미널에서 한 번 로그인한다.
 
 | 필요 | 용도 | 설치 (macOS) |
 |---|---|---|
 | **tmux** | 세션 유지 | `brew install tmux` |
-| **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | `npm install -g @anthropic-ai/claude-code` 후 터미널에서 `claude` 한 번 실행해 로그인 |
-| **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | Claude Code에서 forge 플러그인 설치 |
-| jq (선택) | 세션별 모델 · effort 표시 | `brew install jq` |
+| **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | `curl -fsSL https://claude.ai/install.sh \| bash` 후 터미널에서 `claude` 한 번 실행해 로그인 |
+| **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
+| jq (선택) | 세션별 모델 · effort 표시 | `brew install jq` ([설치] 때 Homebrew가 있으면 같이 깐다) |
 
 forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 

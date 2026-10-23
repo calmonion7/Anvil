@@ -84,18 +84,6 @@ pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> 
     None
 }
 
-/// 실제 환경으로 backend_missing을 잰다.
-pub fn backend_status() -> Option<&'static str> {
-    backend_missing(cfg!(windows), |prog, args| {
-        Command::new(prog)
-            .args(args)
-            .env("PATH", login_path())
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    })
-}
-
 // ---------- 앱 데이터 파일(tmux.conf · 훅) ----------
 
 /// 스크립트에 실행 권한을 준다. 윈도우에는 실행 비트가 없어 할 일이 없다.

@@ -84,7 +84,49 @@
   let newVersion = $state<string | null>(null);
   let updating = $state(false);
   let updateError = $state("");
-  let backendHint = $state<string | null>(null);
+  // 준비물(tmux · claude CLI · forge) — 빠졌으면 띠, macOS는 [설치]
+  type DepsStatus = { needs: string[]; message: string | null; installable: boolean };
+  let deps = $state<DepsStatus | null>(null);
+  let depsInstalling = $state(false);
+  let depsError = $state("");
+  let needLogin = $state(false);
+  const checkDeps = () =>
+    invoke<DepsStatus>("deps_status")
+      .then((d) => (deps = d))
+      .catch(() => {});
+  async function installDeps() {
+    depsInstalling = true;
+    depsError = "";
+    const hadClaude = !deps?.needs.includes("claude");
+    try {
+      await invoke("deps_install");
+      if (!hadClaude) needLogin = true;
+    } catch (e) {
+      depsError = String(e);
+    }
+    depsInstalling = false;
+    checkDeps();
+  }
+  // forge 플러그인: 새 버전 [업데이트] · Anvil이 확인한 것보다 새 버전이면 경고
+  type ForgePlugin = { installed: string | null; latest: string | null; update_available: boolean; untested: boolean };
+  let forgePlugin = $state<ForgePlugin | null>(null);
+  let forgeUpdating = $state(false);
+  let forgeUpdateMsg = $state("");
+  const checkForgePlugin = () =>
+    invoke<ForgePlugin | null>("forge_plugin_status")
+      .then((f) => (forgePlugin = f))
+      .catch(() => {});
+  async function updateForgePlugin() {
+    forgeUpdating = true;
+    try {
+      await invoke("forge_plugin_update");
+      forgeUpdateMsg = "업데이트됨 — 열린 claude 세션은 다시 시작해야 적용됩니다";
+    } catch (e) {
+      forgeUpdateMsg = String(e);
+    }
+    forgeUpdating = false;
+    checkForgePlugin();
+  }
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
   /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
   let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
@@ -247,9 +289,8 @@
         .then((v) => (newVersion = v))
         .catch(() => {});
     checkUpdate();
-    invoke<string | null>("backend_status")
-      .then((m) => (backendHint = m))
-      .catch(() => {});
+    checkDeps();
+    checkForgePlugin();
     const updatePoll = setInterval(checkUpdate, 24 * 60 * 60 * 1000);
     return () => {
       unSnap.then((f) => f());
@@ -434,9 +475,41 @@
           <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>파일 열기</button>
         </div>
       {/each}
-      {#if backendHint}
+      {#if deps?.message}
         <div class="band">
-          <span class="b"><span class="crit">✕</span> 세션을 열 수 없습니다</span><span class="ink2">{backendHint}</span>
+          <span class="b"><span class="crit">✕</span> 준비물이 빠졌습니다</span>
+          <span class="ink2">{depsError || deps.message}</span>
+          <span class="sp"></span>
+          {#if deps.installable}
+            <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
+              {depsInstalling ? "설치 중…" : depsError ? "다시 시도" : "설치"}
+            </button>
+          {/if}
+        </div>
+      {/if}
+      {#if forgePlugin?.update_available || forgeUpdateMsg}
+        <div class="band">
+          <span class="b">forge {forgePlugin?.latest ?? ""} 사용 가능</span>
+          <span class="ink2">{forgeUpdateMsg || `설치됨 ${forgePlugin?.installed} · 프로젝트별로 따로 설치한 forge는 그대로입니다`}</span>
+          <span class="sp"></span>
+          {#if forgeUpdateMsg}
+            <button class="btn sm" onclick={() => (forgeUpdateMsg = "")}>닫기</button>
+          {:else}
+            <button class="btn sm" disabled={forgeUpdating} onclick={updateForgePlugin}>{forgeUpdating ? "업데이트 중…" : "업데이트"}</button>
+          {/if}
+        </div>
+      {/if}
+      {#if forgePlugin?.untested}
+        <div class="band">
+          <span class="b">forge {forgePlugin.installed}</span>
+          <span class="ink2">Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다</span>
+        </div>
+      {/if}
+      {#if needLogin}
+        <div class="band">
+          <span class="b">claude CLI 설치됨</span><span class="ink2">터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다</span>
+          <span class="sp"></span>
+          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>로그인</button>
         </div>
       {/if}
       {#if newVersion}
