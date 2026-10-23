@@ -416,9 +416,13 @@ fn start_update(app: &AppHandle) -> std::io::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // macOS 기본 메뉴의 앱 메뉴에 "업데이트 설치…"를 끼워 넣는다.
+        // macOS 기본 메뉴의 앱 메뉴에 "업데이트 설치…"를 끼워 넣는다 — 로컬 폴링 설치본만(배포판은 업데이터 띠).
         .menu(|app| {
             let menu = tauri::menu::Menu::default(app)?;
+            let local_install = app.path().resource_dir().map(|d| !updater::should_check(&d)).unwrap_or(false);
+            if !local_install {
+                return Ok(menu);
+            }
             let item = tauri::menu::MenuItem::with_id(
                 app,
                 "install-update",
