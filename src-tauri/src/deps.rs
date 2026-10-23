@@ -130,9 +130,101 @@ pub fn open_login() -> Result<(), String> {
         .and_then(|s| if s.success() { Ok(()) } else { Err("터미널을 열지 못했습니다".into()) })
 }
 
+// ---------- forge 플러그인 버전 ----------
+
+/// Anvil 보드가 맞춰 만든 forge 버전(major.minor). 이보다 높으면 `.forge/` 형식이 달라졌을 수 있다.
+const TESTED_FORGE: (u64, u64) = (0, 9);
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct ForgePlugin {
+    /// 사용자 범위(모든 프로젝트 공통)에 설치된 버전
+    pub installed: Option<String>,
+    /// 마켓플레이스의 최신 버전
+    pub latest: Option<String>,
+    pub update_available: bool,
+    /// Anvil이 확인한 forge보다 새 버전이라 보드가 정확하지 않을 수 있다
+    pub untested: bool,
+}
+
+fn ver(s: &str) -> Vec<u64> {
+    s.split(['-', '+']).next().unwrap_or("").split('.').map(|p| p.parse().unwrap_or(0)).collect()
+}
+
+/// installed_plugins.json에서 user 범위 forge 버전.
+pub fn forge_installed_version(home: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(home.join(".claude/plugins/installed_plugins.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    json["plugins"].as_object()?.iter().filter(|(k, _)| k.starts_with("forge@")).find_map(|(_, entries)| {
+        entries.as_array()?.iter().find(|e| e["scope"] == "user")?["version"].as_str().map(String::from)
+    })
+}
+
+/// 마켓플레이스 폴더의 plugin.json 버전.
+pub fn forge_latest_version(home: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(home.join(".claude/plugins/marketplaces/forge/.claude-plugin/plugin.json")).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text).ok()?["version"].as_str().map(String::from)
+}
+
+pub fn forge_plugin_from(installed: Option<String>, latest: Option<String>) -> ForgePlugin {
+    let update_available = matches!((&installed, &latest), (Some(i), Some(l)) if ver(l) > ver(i));
+    let untested = installed.as_deref().map(ver).is_some_and(|v| {
+        (v.first().copied().unwrap_or(0), v.get(1).copied().unwrap_or(0)) > TESTED_FORGE
+    });
+    ForgePlugin { installed, latest, update_available, untested }
+}
+
+/// 마켓플레이스를 새로 받아(네트워크) 설치 버전과 비교한다.
+pub fn forge_plugin_status() -> ForgePlugin {
+    let _ = Command::new("claude")
+        .args(["plugin", "marketplace", "update", "forge"])
+        .env("PATH", login_path())
+        .output();
+    let home = home();
+    forge_plugin_from(forge_installed_version(&home), forge_latest_version(&home))
+}
+
+/// 사용자 범위 forge를 최신으로. 열린 claude 세션은 재시작해야 적용된다.
+pub fn forge_plugin_update() -> Result<(), String> {
+    let out = Command::new("claude")
+        .args(["plugin", "update", FORGE_PLUGIN])
+        .env("PATH", login_path())
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("업데이트 실패").to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forge_plugin_update_and_compat() {
+        let s = |v: &str| Some(v.to_string());
+        let p = forge_plugin_from(s("0.9.5"), s("0.9.10"));
+        assert!(p.update_available && !p.untested);
+        assert!(!forge_plugin_from(s("0.9.5"), s("0.9.5")).update_available);
+        assert!(forge_plugin_from(s("0.10.0"), s("0.10.0")).untested);
+        assert!(forge_plugin_from(s("1.0.0"), None).untested);
+        assert!(!forge_plugin_from(None, s("0.9.5")).update_available);
+    }
+
+    #[test]
+    fn forge_plugin_reads_user_scope_and_marketplace() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join(".claude/plugins/marketplaces/forge/.claude-plugin")).unwrap();
+        std::fs::write(
+            d.path().join(".claude/plugins/installed_plugins.json"),
+            r#"{"plugins":{"forge@forge":[{"scope":"local","version":"0.8.1"},{"scope":"user","version":"0.9.5"}]}}"#,
+        )
+        .unwrap();
+        std::fs::write(d.path().join(".claude/plugins/marketplaces/forge/.claude-plugin/plugin.json"), r#"{"version":"0.9.6"}"#).unwrap();
+        assert_eq!(forge_installed_version(d.path()).as_deref(), Some("0.9.5"));
+        assert_eq!(forge_latest_version(d.path()).as_deref(), Some("0.9.6"));
+    }
 
     #[test]
     fn deps_missing_lists_only_absent() {

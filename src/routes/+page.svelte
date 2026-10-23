@@ -107,6 +107,26 @@
     depsInstalling = false;
     checkDeps();
   }
+  // forge 플러그인: 새 버전 [업데이트] · Anvil이 확인한 것보다 새 버전이면 경고
+  type ForgePlugin = { installed: string | null; latest: string | null; update_available: boolean; untested: boolean };
+  let forgePlugin = $state<ForgePlugin | null>(null);
+  let forgeUpdating = $state(false);
+  let forgeUpdateMsg = $state("");
+  const checkForgePlugin = () =>
+    invoke<ForgePlugin | null>("forge_plugin_status")
+      .then((f) => (forgePlugin = f))
+      .catch(() => {});
+  async function updateForgePlugin() {
+    forgeUpdating = true;
+    try {
+      await invoke("forge_plugin_update");
+      forgeUpdateMsg = "업데이트됨 — 열린 claude 세션은 다시 시작해야 적용됩니다";
+    } catch (e) {
+      forgeUpdateMsg = String(e);
+    }
+    forgeUpdating = false;
+    checkForgePlugin();
+  }
   /** 보드 버튼이 마지막으로 채운 명령 — 흐름도 로그·터미널 유입 띠 펄스용 */
   /** 관별 펄스 횟수 — FlowBoard가 올리고 FlowLinks가 그린다 */
   let outPulses = $state<FlowPulses>({ pOut: 0, rOut: 0, loop: 0, e2: 0, e4: 0 });
@@ -270,6 +290,7 @@
         .catch(() => {});
     checkUpdate();
     checkDeps();
+    checkForgePlugin();
     const updatePoll = setInterval(checkUpdate, 24 * 60 * 60 * 1000);
     return () => {
       unSnap.then((f) => f());
@@ -464,6 +485,24 @@
               {depsInstalling ? "설치 중…" : depsError ? "다시 시도" : "설치"}
             </button>
           {/if}
+        </div>
+      {/if}
+      {#if forgePlugin?.update_available || forgeUpdateMsg}
+        <div class="band">
+          <span class="b">forge {forgePlugin?.latest ?? ""} 사용 가능</span>
+          <span class="ink2">{forgeUpdateMsg || `설치됨 ${forgePlugin?.installed} · 프로젝트별로 따로 설치한 forge는 그대로입니다`}</span>
+          <span class="sp"></span>
+          {#if forgeUpdateMsg}
+            <button class="btn sm" onclick={() => (forgeUpdateMsg = "")}>닫기</button>
+          {:else}
+            <button class="btn sm" disabled={forgeUpdating} onclick={updateForgePlugin}>{forgeUpdating ? "업데이트 중…" : "업데이트"}</button>
+          {/if}
+        </div>
+      {/if}
+      {#if forgePlugin?.untested}
+        <div class="band">
+          <span class="b">forge {forgePlugin.installed}</span>
+          <span class="ink2">Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다</span>
         </div>
       {/if}
       {#if needLogin}

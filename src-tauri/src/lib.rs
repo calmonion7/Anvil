@@ -364,6 +364,18 @@ async fn deps_install() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(deps::install).await.map_err(|e| e.to_string())?
 }
 
+/// forge 플러그인 새 버전 · 호환 여부(마켓플레이스를 새로 받는다)
+#[tauri::command]
+async fn forge_plugin_status() -> Option<deps::ForgePlugin> {
+    tauri::async_runtime::spawn_blocking(deps::forge_plugin_status).await.ok()
+}
+
+/// forge 플러그인을 최신으로
+#[tauri::command]
+async fn forge_plugin_update() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(deps::forge_plugin_update).await.map_err(|e| e.to_string())?
+}
+
 /// 터미널에서 claude를 열어 로그인
 #[tauri::command]
 fn deps_login() -> Result<(), String> {
@@ -519,6 +531,8 @@ pub fn run() {
             deps_status,
             deps_install,
             deps_login,
+            forge_plugin_status,
+            forge_plugin_update,
             updater::updater_check,
             updater::updater_install
         ])
