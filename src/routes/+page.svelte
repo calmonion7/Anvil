@@ -107,6 +107,36 @@
     depsInstalling = false;
     checkDeps();
   }
+  // 설정 > 역할별 모델 — 새로 여는 세션부터 적용
+  const MODEL_CHOICES = [
+    ["default", "claude 기본값"],
+    ["opus", "opus"],
+    ["sonnet", "sonnet"],
+    ["haiku", "haiku"],
+  ] as const;
+  let settingsOpen = $state(false);
+  let settingsError = $state("");
+  let modelSettings = $state<Record<string, string>>({});
+  async function openSettings() {
+    settingsOpen = true;
+    settingsError = "";
+    try {
+      modelSettings = await invoke("model_settings");
+    } catch (e) {
+      settingsError = String(e);
+    }
+  }
+  async function saveModel(role: string, model: string) {
+    settingsError = "";
+    try {
+      await invoke("set_model_setting", { role, model });
+      modelSettings[role] = model;
+      const i = role === "plan" ? 0 : 1;
+      for (const t of Object.values(titles)) t[i][1] = model;
+    } catch (e) {
+      settingsError = String(e);
+    }
+  }
   // forge 플러그인: 새 버전 [업데이트] · Anvil이 확인한 것보다 새 버전이면 경고
   type ForgePlugin = { installed: string | null; latest: string | null; update_available: boolean; untested: boolean };
   let forgePlugin = $state<ForgePlugin | null>(null);
@@ -431,8 +461,23 @@
     {/each}
     {#if rail}
       <button class="add icon t3" onclick={addProject} aria-label="프로젝트 추가" title="프로젝트 추가">＋</button>
+      <button class="add icon t3 set" onclick={() => { toggleRail(); openSettings(); }} aria-label="설정" title="설정">⚙</button>
     {:else}
       <button class="add t3" onclick={addProject}>＋ 프로젝트 추가</button>
+      <button class="add t3 set" aria-expanded={settingsOpen} onclick={() => (settingsOpen ? (settingsOpen = false) : openSettings())}>⚙ 설정</button>
+      {#if settingsOpen}
+        <div class="settings">
+          {#each [["plan", "계획 세션 모델"], ["run", "실행 세션 모델"]] as [role, label] (role)}
+            <label class="t3">
+              {label}
+              <select value={modelSettings[role]} onchange={(e) => saveModel(role, e.currentTarget.value)}>
+                {#each MODEL_CHOICES as [v, l] (v)}<option value={v}>{l}</option>{/each}
+              </select>
+            </label>
+          {/each}
+          <span class="t3">{settingsError || "새로 여는 세션부터 적용됩니다"}</span>
+        </div>
+      {/if}
     {/if}
   </aside>
 
@@ -582,7 +627,7 @@
             <div class="info info-{r}">
                 {#if r === "run"}
                   {#key current.path}
-                    <NowStrip snap={current} onOpen={openDoc}>
+                    <NowStrip snap={current} onOpen={openDoc} onStart={() => fill("plan", "/forge:fg-ask ")}>
                       {#snippet tools()}
                         <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} {commands} />
                       {/snippet}
@@ -684,6 +729,10 @@
   .add { margin-top: auto; padding: 8px; background: none; border: 0; text-align: left; cursor: pointer; min-height: 44px; }
   .add.icon { text-align: center; font-size: 15px; }
   .add:hover { color: var(--ink); }
+  .add.set { margin-top: 0; }
+  .settings { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; }
+  .settings label { display: flex; flex-direction: column; gap: 4px; }
+  .settings select { min-height: 32px; font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .skels { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
   .skels.wide { width: 360px; }
 

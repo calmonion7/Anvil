@@ -176,6 +176,10 @@ impl Files {
     pub fn models(&self) -> PathBuf {
         self.dir.join("models")
     }
+    /// 앱 설정(역할별 모델 등)
+    pub fn settings(&self) -> PathBuf {
+        self.dir.join("settings.json")
+    }
 
     /// 앱이 시작할 때마다 tmux.conf · 훅 스크립트 · 상태줄 래퍼 · 훅 설정을 다시 쓴다(앱 업데이트 반영).
     pub fn install(&self) -> std::io::Result<()> {
@@ -250,6 +254,39 @@ pub fn session_title(project: &Path, role: &str) -> (String, &'static str) {
     (format!("[Anvil] [{folder}] {mode}"), model)
 }
 
+/// 설정에서 고를 수 있는 모델. `default`는 `--model`을 붙이지 않아 claude 기본값을 따른다.
+pub const MODEL_CHOICES: [&str; 4] = ["default", "opus", "sonnet", "haiku"];
+
+/// 역할별 모델(설정 > 기본값 session_title).
+pub fn role_model(files: &Files, role: &str) -> String {
+    std::fs::read_to_string(files.settings())
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v["models"][role].as_str().map(String::from))
+        .filter(|m| MODEL_CHOICES.contains(&m.as_str()))
+        .unwrap_or_else(|| session_title(Path::new(""), role).1.to_string())
+}
+
+pub fn set_role_model(files: &Files, role: &str, model: &str) -> Result<(), String> {
+    if role != "plan" && role != "run" {
+        return Err(format!("알 수 없는 역할: {role}"));
+    }
+    if !MODEL_CHOICES.contains(&model) {
+        return Err(format!("알 수 없는 모델: {model}"));
+    }
+    let mut v: serde_json::Value = std::fs::read_to_string(files.settings())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .filter(|v: &serde_json::Value| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !v["models"].is_object() {
+        v["models"] = serde_json::json!({});
+    }
+    v["models"][role] = model.into();
+    std::fs::create_dir_all(&files.dir).map_err(|e| e.to_string())?;
+    std::fs::write(files.settings(), serde_json::to_string_pretty(&v).unwrap()).map_err(|e| e.to_string())
+}
+
 /// 셸 작은따옴표 인용(폴더 이름에 `'`가 있어도 깨지지 않게).
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
@@ -276,9 +313,11 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     }
     let _ = std::fs::remove_file(files.sessions().join(format!("{name}.json")));
     let _ = std::fs::remove_file(files.models().join(format!("{name}.json")));
-    let (title, model) = session_title(project, role);
+    let (title, _) = session_title(project, role);
+    let model = role_model(files, role);
+    let model_arg = if model == "default" { String::new() } else { format!("--model {model} ") };
     let cmd = format!(
-        "{UNSET_PARENT_CLAUDE}exec claude -n {} --model {model} --settings {}",
+        "{UNSET_PARENT_CLAUDE}exec claude -n {} {model_arg}--settings {}",
         sh_quote(&title),
         sh_quote(&files.hooks().to_string_lossy())
     );
@@ -494,6 +533,24 @@ mod tests {
         assert_eq!(session_title(p, "run"), ("[Anvil] [BibleMap] RUN".to_string(), "sonnet"));
         assert_eq!(session_title(Path::new("/a/lab-taebro"), "plan").0, "[Anvil] [lab-taebro] PLAN");
         assert_eq!(sh_quote("[Anvil] [it's] PLAN"), r"'[Anvil] [it'\''s] PLAN'");
+    }
+
+    #[test]
+    fn role_model_setting_overrides_default() {
+        let d = tempfile::tempdir().unwrap();
+        let files = Files { dir: d.path().to_path_buf() };
+        assert_eq!(role_model(&files, "plan"), "opus");
+        assert_eq!(role_model(&files, "run"), "sonnet");
+        set_role_model(&files, "plan", "default").unwrap();
+        set_role_model(&files, "run", "haiku").unwrap();
+        assert_eq!(role_model(&files, "plan"), "default");
+        assert_eq!(role_model(&files, "run"), "haiku");
+        assert!(set_role_model(&files, "run", "gpt").is_err());
+        assert!(set_role_model(&files, "x", "opus").is_err());
+        std::fs::write(files.settings(), "깨진 json").unwrap();
+        assert_eq!(role_model(&files, "plan"), "opus");
+        set_role_model(&files, "plan", "sonnet").unwrap();
+        assert_eq!(role_model(&files, "plan"), "sonnet");
     }
 
     /// 다른 claude 세션 안에서 Anvil을 띄워도 새 claude가 부모의 변수를 물려받지 않는다

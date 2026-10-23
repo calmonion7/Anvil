@@ -8,9 +8,12 @@
     snap,
     onOpen,
     tools,
+    onStart,
   }: {
     snap: Snapshot;
     onOpen: (rel: string, label: string) => void;
+    /** forge가 없을 때 — 계획 세션에 첫 계획 명령을 채운다 */
+    onStart?: () => void;
     /** 둘째 줄 오른쪽 — 실행 세션 단축 버튼 */
     tools?: Snippet;
   } = $props();
@@ -46,7 +49,8 @@
   <div class="band">
     <span class="b kicker">{!active && next ? "다음" : "지금"}</span>
     {#if !snap.hasForge}
-      <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 첫 계획을 만들면 채워집니다.</span>
+      <span class="ink2 tt">forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 계획 세션에서 <code>/forge:fg-ask</code> 로 첫 계획을 만들면 보드가 채워집니다.</span>
+      {#if onStart}<button class="btn sm" onclick={onStart}>계획 세션에서 시작</button>{/if}
     {:else if active}
       <span class="tt" title={active.title}><span class="num">{num(active.task)}</span>{splitTitle(active.title)[0]}</span>
       {#each active.docs as d (d.path)}
