@@ -176,32 +176,87 @@ fn status_field_reads_first_word_in_both_forms() {
 
 // ---------- 후속후보 ----------
 
-#[test]
-fn followups_only_under_followup_headings() {
-    let bm = biblemap();
-    let texts: Vec<&str> = bm.followups.iter().map(|f| f.text.as_str()).collect();
-    assert!(texts.iter().any(|t| t.starts_with("골리앗 판 화풍 통일")));
-    assert!(texts.iter().any(|t| t.contains("--plate")));
-    let f = bm.followups.iter().find(|f| f.text.starts_with("골리앗 판 화풍")).unwrap();
-    assert_eq!(f.source_slug, "scene-figure-plates-redo");
-    assert_eq!(f.date, "2026-09-03");
+const LEDGER: &str = "# 후속후보\n\n이 제목 줄은 무시된다\n\n<!-- followup: fu-aaaaaaaaaaaa | source: old-task | task: 3 | date: 2026-10-01 | status: open | taken: - -->\n- 재시도 경우 검사 추가\n  근거: 시간 초과 분기 미검증\n<!-- followup: fu-bbbbbbbbbbbb | source: old-task | task: - | date: 2026-10-05 | status: taken | taken: 9 -->\n- 로그 정리\n<!-- followup: fu-cccccccccccc | source: other | task: 4 | date: 2026-10-03 | status: dismissed | taken: - -->\n- 필요 없음\n  사유: 대체됨\n";
 
-    let pf = portfolion();
-    let texts: Vec<&str> = pf.followups.iter().map(|f| f.text.as_str()).collect();
-    assert!(texts.iter().any(|t| t.starts_with("Non-goals 미접촉")), "## 후속 메모 아래 항목");
-    // 같은 run.md의 다른 ## 절 항목은 잡지 않는다
-    let run = fs::read_to_string(
-        fixture("portfolion").join(".forge/done/2026-07-04-fomc-coverage-guard/run.md"),
-    )
-    .unwrap();
-    let other = forge::followups_in(&run);
-    assert_eq!(other.len(), 2);
+#[test]
+fn ledger_open_entry_parses() {
+    let (items, errors) = forge::parse_followups(LEDGER);
+    assert!(errors.is_empty(), "{errors:?}");
+    let f = &items[0];
+    assert_eq!(f.id, "fu-aaaaaaaaaaaa");
+    assert_eq!(f.source, "old-task");
+    assert_eq!(f.task, Some(3));
+    assert_eq!(f.date, "2026-10-01");
+    assert_eq!(f.status, "open");
+    assert_eq!(f.taken, None);
+    assert_eq!(f.text, "재시도 경우 검사 추가");
 }
 
 #[test]
-fn followups_stop_at_next_section() {
-    let md = "# t\n## 후속 후보\n- 하나\n  이어지는 줄\n- 둘\n## 문서 갱신\n- 셋\n## 다음 탐구\n- 넷\n";
-    assert_eq!(forge::followups_in(md), vec!["하나", "둘", "넷"]);
+fn ledger_taken_and_dismissed() {
+    let (items, _) = forge::parse_followups(LEDGER);
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[1].status, "taken");
+    assert_eq!(items[1].taken, Some(9));
+    assert_eq!(items[1].task, None, "task: - 는 번호 없음");
+    assert_eq!(items[2].status, "dismissed");
+}
+
+#[test]
+fn ledger_multiline_body() {
+    let (items, _) = forge::parse_followups(LEDGER);
+    assert_eq!(items[0].body, "재시도 경우 검사 추가\n근거: 시간 초과 분기 미검증");
+    assert_eq!(items[2].body, "필요 없음\n사유: 대체됨");
+    assert_eq!(items[1].body, "로그 정리");
+}
+
+#[test]
+fn ledger_ignores_heading_before_first_marker() {
+    let (items, errors) = forge::parse_followups("# 후속후보\n## 후속 후보\n- 제목 아래 항목\n");
+    assert!(items.is_empty());
+    assert!(errors.is_empty());
+}
+
+#[test]
+fn ledger_broken_marker_goes_to_errors() {
+    let md = "<!-- followup: fu-XYZ | source: a | task: 1 | date: 2026-10-01 | status: open | taken: - -->\n- 깨짐\n<!-- followup: fu-dddddddddddd | source: a | task: 1 | date: 2026-10-01 | status: wip | taken: - -->\n- 상태 틀림\n<!-- followup: fu-eeeeeeeeeeee | source: a | task: 1 | date: 2026-10-02 | status: open | taken: - -->\n- 정상\n";
+    let (items, errors) = forge::parse_followups(md);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "fu-eeeeeeeeeeee");
+    assert_eq!(errors.len(), 2);
+}
+
+#[test]
+fn ledger_missing_file_is_zero() {
+    let p = temp_project(None, Some("ref: refs/heads/main\n"));
+    let s = forge::snapshot(p.path());
+    assert!(s.followups.is_empty());
+    assert!(s.errors.is_empty());
+}
+
+#[test]
+fn ledger_snapshot_sorts_open_newest_first_and_reports_errors() {
+    let p = temp_project(None, Some("ref: refs/heads/main\n"));
+    fs::write(p.path().join(".forge/followups.md"), format!("{LEDGER}<!-- followup: bad -->\n- x\n")).unwrap();
+    let s = forge::snapshot(p.path());
+    let ids: Vec<&str> = s.followups.iter().map(|f| f.id.as_str()).collect();
+    assert_eq!(ids, vec!["fu-bbbbbbbbbbbb", "fu-cccccccccccc", "fu-aaaaaaaaaaaa"], "날짜 최신순");
+    assert_eq!(s.errors.len(), 1);
+    assert!(s.errors[0].path.ends_with("followups.md"));
+}
+
+#[test]
+fn ledger_branch_root_reads_only_branch_ledger() {
+    let p = temp_project(None, Some("ref: refs/heads/feat\n"));
+    fs::write(p.path().join(".forge/followups.md"), LEDGER).unwrap();
+    let s = forge::snapshot(p.path());
+    assert!(s.followups.is_empty(), "기본 원장을 겹쳐 읽지 않는다");
+    let br = p.path().join(".forge/branch/feat");
+    fs::create_dir_all(&br).unwrap();
+    fs::write(br.join("followups.md"), "<!-- followup: fu-ffffffffffff | source: b | task: 1 | date: 2026-10-09 | status: open | taken: - -->\n- 브랜치 것\n").unwrap();
+    let s = forge::snapshot(p.path());
+    assert_eq!(s.followups.len(), 1);
+    assert_eq!(s.followups[0].id, "fu-ffffffffffff");
 }
 
 // ---------- 오류 격리 ----------

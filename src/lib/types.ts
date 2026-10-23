@@ -27,7 +27,11 @@ export interface LoopState {
   checks: Check[]; path: string;
 }
 
-export interface Followup { text: string; sourceSlug: string; sourcePath: string; date: string }
+/** forge 원장(`followups.md`) 항목 — text는 본문 첫 줄 */
+export interface Followup {
+  id: string; source: string; task: number | null; date: string;
+  status: "open" | "taken" | "dismissed"; taken: number | null; text: string; body: string;
+}
 
 export interface FileError { path: string; message: string }
 
@@ -59,7 +63,7 @@ export type SessionTitle = [name: string, model: string];
 export interface BoardActions {
   run: (p: PlanCard) => void;
   start: (f: Followup) => void;
-  setHidden: (f: Followup, hidden: boolean) => void;
+  dismiss: (f: Followup) => void;
 }
 
 /** 열린 문서 탭 하나 */

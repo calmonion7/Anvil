@@ -34,7 +34,7 @@
     const cur = {
       backlog: snap.backlog.length,
       done: snap.doneTotal,
-      follow: snap.followups.length,
+      follow: snap.followups.filter((f) => f.status === "open").length,
       active: snap.active ? `${snap.active.task ?? "—"}` : null,
     };
     const p = prev;

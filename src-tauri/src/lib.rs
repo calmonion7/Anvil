@@ -349,26 +349,6 @@ async fn session_fill(app: AppHandle, project: String, role: String, text: Strin
     .map_err(|e| e.to_string())?
 }
 
-// ---------- 후속후보 숨김(앱 데이터 hidden-followups.json) ----------
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq)]
-struct HiddenFollowup {
-    project: String,
-    source: String,
-    text: String,
-}
-
-fn hidden_path(app: &AppHandle) -> PathBuf {
-    data_dir(app).join("hidden-followups.json")
-}
-
-fn load_hidden(app: &AppHandle) -> Vec<HiddenFollowup> {
-    std::fs::read_to_string(hidden_path(app))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
-}
-
 /// 단축 버튼 자동완성 — 설치된 플러그인·사용자·이 프로젝트의 슬래시 명령(프런트가 프로젝트마다 한 번 읽어 둔다)
 #[tauri::command]
 fn slash_commands(project: String) -> Vec<String> {
@@ -409,22 +389,6 @@ fn deps_login() -> Result<(), String> {
     deps::open_login()
 }
 
-#[tauri::command]
-fn hidden_followups(app: AppHandle) -> Vec<HiddenFollowup> {
-    load_hidden(&app)
-}
-
-#[tauri::command]
-fn set_followup_hidden(app: AppHandle, item: HiddenFollowup, hidden: bool) -> Result<Vec<HiddenFollowup>, String> {
-    let mut list = load_hidden(&app);
-    list.retain(|h| *h != item);
-    if hidden {
-        list.push(item);
-    }
-    let json = serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?;
-    std::fs::write(hidden_path(&app), json).map_err(|e| e.to_string())?;
-    Ok(list)
-}
 /// 보드 카드가 여는 문서. 등록한 프로젝트의 `.forge/` 안 파일만 읽는다.
 #[tauri::command]
 fn read_doc(state: State<AppState>, project: String, rel: String) -> Result<String, String> {
@@ -556,8 +520,6 @@ pub fn run() {
             term_close,
             notify,
             session_fill,
-            hidden_followups,
-            set_followup_hidden,
             slash_commands,
             deps_status,
             deps_install,
