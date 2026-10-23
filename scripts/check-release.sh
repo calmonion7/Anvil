@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # release.sh 를 이 레포의 임시 복제본에서 돌려 본다(원본·원격은 건드리지 않는다).
-#   새 버전 → 다섯 파일 일치 + 커밋 + 태그 · 같은 버전 → 태그만 · 잘못된 입력/main 아님/태그 중복 → 실패
+#   새 버전 → 다섯 파일 일치 + 커밋 + 태그 · 같은 버전 → 태그만 · 잘못된 입력/main 아님/태그 중복/노트 없음 → 실패
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -12,7 +12,9 @@ clone() {
   git clone -q "$ROOT" "$TMP/$1"
   git -C "$TMP/$1" checkout -q -B main HEAD
   cp "$ROOT/scripts/release.sh" "$TMP/$1/scripts/release.sh" # 커밋 전 작업본도 시험
-  git -C "$TMP/$1" -c user.name=t -c user.email=t@t commit -q -am "test: 작업본" --allow-empty
+  mkdir -p "$TMP/$1/docs/releases" && echo "노트" > "$TMP/$1/docs/releases/v9.8.7.md"
+  git -C "$TMP/$1" add -A
+  git -C "$TMP/$1" -c user.name=t -c user.email=t@t commit -q -m "test: 작업본" --allow-empty
   git -C "$TMP/$1" remote remove origin
   echo "$TMP/$1"
 }
@@ -36,6 +38,7 @@ before="$(git -C "$R" rev-parse HEAD)"
 (cd "$R" && git config user.name t && git config user.email t@t && scripts/release.sh "$CUR") >"$TMP/same.log" 2>&1
 check "같은 버전: 커밋 없이 태그만" '[ "$(git -C "$R" rev-parse HEAD)" = "$before" ] && git -C "$R" rev-parse -q --verify "refs/tags/v$CUR" >/dev/null'
 
+check "릴리스 노트 없으면 실패" '! (cd "$R" && scripts/release.sh 9.7.0) >/dev/null 2>&1 && ! git -C "$R" rev-parse -q --verify refs/tags/v9.7.0 >/dev/null'
 check "잘못된 버전 형식이면 실패" '! (cd "$R" && scripts/release.sh 1.2) >/dev/null 2>&1'
 git -C "$R" checkout -q -b other
 check "main 아니면 실패" '! (cd "$R" && scripts/release.sh 9.9.9) >/dev/null 2>&1'
