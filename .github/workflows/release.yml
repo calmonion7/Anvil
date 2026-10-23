@@ -1,4 +1,4 @@
-# v* 태그 → macOS·Windows·Ubuntu 빌드 → draft 릴리스 하나에 결과물·업데이터 json 첨부.
+# v* 태그 → macOS·Windows·Ubuntu 빌드 → draft 릴리스 하나에 결과물·업데이터 json 첨부 → 모두 성공하면 공개.
 name: release
 
 on:
@@ -73,3 +73,17 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  # 네 빌드가 모두 성공해야 공개한다(도중에 공개하면 latest.json 이 덜 찬 채 업데이터에 보인다).
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: draft 공개
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # draft 는 tag_name 이 untagged-… 로 보여 태그로 못 찾는다 → build 의 releaseName 으로 찾고 태그를 붙여 공개.
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .name == \"Anvil $GITHUB_REF_NAME\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::$GITHUB_REF_NAME draft 릴리스가 없다"; exit 1; }
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$GITHUB_REF_NAME" -F draft=false -f make_latest=true --jq '.html_url'
