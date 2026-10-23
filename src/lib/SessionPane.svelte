@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { ask } from "@tauri-apps/plugin-dialog";
   import Terminal from "./Terminal.svelte";
+  import { t } from "./i18n.svelte";
   import { roleLabel, stateLabel, pipClass } from "./sessions";
   import type { Role, SessionState, SessionTitle, ModelInfo } from "./types";
 
@@ -35,7 +36,7 @@
   /** 머리줄 `[Anvil] [BibleMap] PLAN · Opus 5.5 · high` — 기록 전에는 띄울 때 모델만, effort는 숨긴다 */
   let heading = $derived(
     title
-      ? [title[0], (alive && live?.model) || (title[1] === "default" ? "claude 기본값" : title[1]), alive ? live?.effort : null]
+      ? [title[0], (alive && live?.model) || (title[1] === "default" ? t("claude 기본값", "claude default") : title[1]), alive ? live?.effort : null]
           .filter(Boolean)
           .join(" · ")
       : "",
@@ -54,11 +55,11 @@
   }
 
   async function kill() {
-    const ok = await ask(`${projectName} ${roleLabel[role]} 세션을 끝낼까요? 진행 중인 claude 대화가 종료됩니다.`, {
-      title: "세션 종료",
+    const ok = await ask(t(`${projectName} ${roleLabel[role]} 세션을 끝낼까요? 진행 중인 claude 대화가 종료됩니다.`, `End the ${projectName} ${roleLabel[role]} session? The running claude conversation will be terminated.`), {
+      title: t("세션 종료", "End session"),
       kind: "warning",
-      okLabel: "세션 종료",
-      cancelLabel: "취소",
+      okLabel: t("세션 종료", "End session"),
+      cancelLabel: t("취소", "Cancel"),
     });
     if (!ok) return;
     try {
@@ -72,21 +73,21 @@
 <div class="pane">
   <div class="th">
     <span class="pip {pipClass(session)}"></span>
-    <span class="b label">{roleLabel[role]} 세션</span>
+    <span class="b label">{t(`${roleLabel[role]} 세션`, `${roleLabel[role]} session`)}</span>
     <span class="st">{stateLabel(session)}{task ? ` · ${task}` : ""}</span>
     {#if heading}<span class="nm" title={heading}>{heading}</span>{/if}
     <span class="sp"></span>
     {#if alive}
-      <button class="btn sm" onclick={kill}>세션 종료</button>
+      <button class="btn sm" onclick={kill}>{t("세션 종료", "End session")}</button>
     {/if}
   </div>
   {#if alive}
     {#key name}<Terminal {name} {focusTick} />{/key}
   {:else}
     <div class="empty">
-      <div>{roleLabel[role]} 세션이 없습니다.</div>
-      <div class="t3">{role === "plan" ? "계획을 쌓는(fg-ask) 자리입니다." : "계획을 실행하는(fg-run·fg-next) 자리입니다."}</div>
-      <button class="btn sm" disabled={busy} onclick={start}>{busy ? "여는 중…" : "세션 열기"}</button>
+      <div>{t(`${roleLabel[role]} 세션이 없습니다.`, `No ${roleLabel[role]} session.`)}</div>
+      <div class="t3">{role === "plan" ? t("계획을 쌓는(fg-ask) 자리입니다.", "Where plans are built (fg-ask).") : t("계획을 실행하는(fg-run·fg-next) 자리입니다.", "Where plans are run (fg-run · fg-next).")}</div>
+      <button class="btn sm" disabled={busy} onclick={start}>{busy ? t("여는 중…", "Opening…") : t("세션 열기", "Open session")}</button>
       {#if error}<div class="err">{error}</div>{/if}
     </div>
   {/if}

@@ -1,3 +1,5 @@
+import { t } from "./i18n.svelte";
+
 /** `YYYY-MM-DD` → 오늘 / 어제 / M월 D일 */
 export function dayLabel(date: string): string {
   const m = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -6,9 +8,9 @@ export function dayLabel(date: string): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.round((today.getTime() - d.getTime()) / 86400000);
-  if (diff === 0) return "오늘";
-  if (diff === 1) return "어제";
-  return `${+m[2]}월 ${+m[3]}일`;
+  if (diff === 0) return t("오늘", "Today");
+  if (diff === 1) return t("어제", "Yesterday");
+  return t(`${+m[2]}월 ${+m[3]}일`, d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
 }
 
 /** 계획 제목 `앞 — 뒤`를 제목과 부제로 나눈다. */
@@ -17,7 +19,11 @@ export function splitTitle(title: string): [string, string] {
   return i < 0 ? [title, ""] : [title.slice(0, i), title.slice(i + 3)];
 }
 
-export const priorityLabel = { high: "높음", medium: "보통", low: "낮음" } as const;
+export const priorityLabel = {
+  get high() { return t("높음", "High"); },
+  get medium() { return t("보통", "Medium"); },
+  get low() { return t("낮음", "Low"); },
+};
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 

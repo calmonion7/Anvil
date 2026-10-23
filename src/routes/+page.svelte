@@ -10,6 +10,7 @@
   import FlowLinks, { type FlowPulses } from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
+  import { t, i18n, setLang, initLang, type LangChoice } from "$lib/i18n.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
   import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
 
@@ -56,11 +57,11 @@
     split = v;
     saveLayout({ split, unfoldTo });
   }
-  const LAYOUTS = [
-    { v: 0, label: "계획 접기 · 실행창만" },
-    { v: 0.5, label: "가운데 · 계획·실행 반반" },
-    { v: 1, label: "실행 접기 · 계획창만" },
-  ];
+  const LAYOUTS = $derived([
+    { v: 0, label: t("계획 접기 · 실행창만", "Collapse plan · run only") },
+    { v: 0.5, label: t("가운데 · 계획·실행 반반", "Center · plan/run split") },
+    { v: 1, label: t("실행 접기 · 계획창만", "Collapse run · plan only") },
+  ]);
   let rail = $state(false);
   let shortcuts = $state<Record<Role, string[]>>(loadShortcuts());
   function loadShortcuts(): Record<Role, string[]> {
@@ -108,12 +109,12 @@
     checkDeps();
   }
   // 설정 > 역할별 모델 — 새로 여는 세션부터 적용
-  const MODEL_CHOICES = [
-    ["default", "claude 기본값"],
+  const MODEL_CHOICES = $derived([
+    ["default", t("claude 기본값", "claude default")],
     ["opus", "opus"],
     ["sonnet", "sonnet"],
     ["haiku", "haiku"],
-  ] as const;
+  ] as const);
   let settingsOpen = $state(false);
   let settingsError = $state("");
   let modelSettings = $state<Record<string, string>>({});
@@ -150,7 +151,7 @@
     forgeUpdating = true;
     try {
       await invoke("forge_plugin_update");
-      forgeUpdateMsg = "업데이트됨 — 열린 claude 세션은 다시 시작해야 적용됩니다";
+      forgeUpdateMsg = t("업데이트됨 — 열린 claude 세션은 다시 시작해야 적용됩니다", "Updated — restart open claude sessions to apply");
     } catch (e) {
       forgeUpdateMsg = String(e);
     }
@@ -189,13 +190,13 @@
     if (!current) return null;
     const s = sessionOf(current.path, "run");
     if (!s?.alive || s.state !== "working") return null;
-    const t = linkedTask(current, s);
-    return t ? `${t} 실행 중` : "실행 세션 작업 중";
+    const task = linkedTask(current, s);
+    return task ? t(`${task} 실행 중`, `Running ${task}`) : t("실행 세션 작업 중", "Run session busy");
   });
   let planBlocked = $derived.by(() => {
     if (!current) return null;
     const s = sessionOf(current.path, "plan");
-    return s?.alive && s.state === "working" ? "계획 세션 작업 중" : null;
+    return s?.alive && s.state === "working" ? t("계획 세션 작업 중", "Plan session busy") : null;
   });
   let hiddenSet = $derived(
     new Set(hiddenItems.filter((h) => h.project === current?.path).map((h) => `${h.source}\n${h.text}`)),
@@ -219,7 +220,7 @@
 
   const actions: BoardActions = {
     run: (p) => fill("run", p.task == null ? "/forge:fg-run" : `/forge:fg-run #${p.task}`),
-    start: (f) => fill("plan", `/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`),
+    start: (f) => fill("plan", t(`/forge:fg-ask ${f.text} (출처: ${f.sourceSlug})`, `/forge:fg-ask ${f.text} (source: ${f.sourceSlug})`)),
     setHidden: async (f, hidden) => {
       if (!current) return;
       hiddenItems = await invoke("set_followup_hidden", {
@@ -237,7 +238,7 @@
         : ROLES.filter((r) => {
             const s = sessionOf(p.path, r);
             return s?.alive && s.state === "waiting";
-          }).map((r) => `${p.name} ${roleLabel[r]} 세션`),
+          }).map((r) => t(`${p.name} ${roleLabel[r]} 세션`, `${p.name} ${roleLabel[r]} session`)),
     ),
   );
 
@@ -281,7 +282,7 @@
       if (!owner) continue;
       if (owner.path === current?.path && document.hasFocus()) continue;
       const role: Role = names[owner.path][0] === name ? "plan" : "run";
-      notify(`${owner.name} ${roleLabel[role]} 세션 · 입력 대기 — ${owner.headline}`);
+      notify(t(`${owner.name} ${roleLabel[role]} 세션 · 입력 대기 — ${owner.headline}`, `${owner.name} ${roleLabel[role]} session · waiting for input — ${owner.headline}`));
     }
     sessions = next;
   }
@@ -291,7 +292,9 @@
       selected = localStorage.getItem(SELECTED_KEY);
     } catch {}
     loadLayout();
-    invoke<Snapshot[]>("list_projects")
+    // 백엔드 문구(요약 · 경고)가 화면 언어로 나오도록 언어를 먼저 알린 뒤 불러온다
+    initLang()
+      .then(() => invoke<Snapshot[]>("list_projects"))
       .then(async (list) => {
         projects = list;
         await loadNames(list);
@@ -332,7 +335,7 @@
   });
 
   async function addProject() {
-    const dir = await open({ directory: true, multiple: false, title: "프로젝트 폴더 고르기" });
+    const dir = await open({ directory: true, multiple: false, title: t("프로젝트 폴더 고르기", "Choose project folder") });
     if (typeof dir !== "string") return;
     try {
       projects = await invoke<Snapshot[]>("add_project", { path: dir });
@@ -432,8 +435,8 @@
 <div class="app">
   <aside class="side" class:rail>
     <div class="hd">
-      {#if !rail}<span class="t3 b caps">프로젝트</span><span class="t3">{projects.length}</span>{/if}
-      <button class="fold" onclick={toggleRail} aria-label={rail ? "프로젝트 목록 펼치기" : "프로젝트 목록 접기"} title={rail ? "펼치기" : "접기"}>{rail ? "»" : "«"}</button>
+      {#if !rail}<span class="t3 b caps">{t("프로젝트", "Projects")}</span><span class="t3">{projects.length}</span>{/if}
+      <button class="fold" onclick={toggleRail} aria-label={rail ? t("프로젝트 목록 펼치기", "Expand project list") : t("프로젝트 목록 접기", "Collapse project list")} title={rail ? t("펼치기", "Expand") : t("접기", "Collapse")}>{rail ? "»" : "«"}</button>
     </div>
     {#if loading}
       <div class="skels"><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div><div class="skel" style="width:70%"></div></div>
@@ -455,19 +458,19 @@
           {/each}
         </span>
         {#if !rail}
-          <button class="x" title="등록 해제(폴더는 그대로)" aria-label="{p.name} 등록 해제" onclick={() => removeProject(p.path)}>×</button>
+          <button class="x" title={t("등록 해제(폴더는 그대로)", "Unregister (folder is kept)")} aria-label={t(`${p.name} 등록 해제`, `Unregister ${p.name}`)} onclick={() => removeProject(p.path)}>×</button>
         {/if}
       </div>
     {/each}
     {#if rail}
-      <button class="add icon t3" onclick={addProject} aria-label="프로젝트 추가" title="프로젝트 추가">＋</button>
-      <button class="add icon t3 set" onclick={() => { toggleRail(); openSettings(); }} aria-label="설정" title="설정">⚙</button>
+      <button class="add icon t3" onclick={addProject} aria-label={t("프로젝트 추가", "Add project")} title={t("프로젝트 추가", "Add project")}>＋</button>
+      <button class="add icon t3 set" onclick={() => { toggleRail(); openSettings(); }} aria-label={t("설정", "Settings")} title={t("설정", "Settings")}>⚙</button>
     {:else}
-      <button class="add t3" onclick={addProject}>＋ 프로젝트 추가</button>
-      <button class="add t3 set" aria-expanded={settingsOpen} onclick={() => (settingsOpen ? (settingsOpen = false) : openSettings())}>⚙ 설정</button>
+      <button class="add t3" onclick={addProject}>＋ {t("프로젝트 추가", "Add project")}</button>
+      <button class="add t3 set" aria-expanded={settingsOpen} onclick={() => (settingsOpen ? (settingsOpen = false) : openSettings())}>⚙ {t("설정", "Settings")}</button>
       {#if settingsOpen}
         <div class="settings">
-          {#each [["plan", "계획 세션 모델"], ["run", "실행 세션 모델"]] as [role, label] (role)}
+          {#each [["plan", t("계획 세션 모델", "Plan session model")], ["run", t("실행 세션 모델", "Run session model")]] as [role, label] (role)}
             <label class="t3">
               {label}
               <select value={modelSettings[role]} onchange={(e) => saveModel(role, e.currentTarget.value)}>
@@ -475,7 +478,20 @@
               </select>
             </label>
           {/each}
-          <span class="t3">{settingsError || "새로 여는 세션부터 적용됩니다"}</span>
+          <label class="t3">
+            {t("언어", "Language")}
+            <select value={i18n.choice} onchange={(e) =>
+                setLang(e.currentTarget.value as LangChoice)
+                  .then(() => invoke<Snapshot[]>("list_projects"))
+                  .then((list) => (projects = list))
+                  .then(checkDeps)
+                  .catch(() => {})}>
+              <option value="auto">{t("자동(시스템 언어)", "Auto (system)")}</option>
+              <option value="ko">한국어</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <span class="t3">{settingsError || t("새로 여는 세션부터 적용됩니다", "Applies to newly opened sessions")}</span>
         </div>
       {/if}
     {/if}
@@ -485,14 +501,14 @@
     {#if loading}
       <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
     {:else if loadError}
-      <div class="center"><div class="error"><span class="b">✕ 불러오기 실패</span> — {loadError}</div></div>
+      <div class="center"><div class="error"><span class="b">✕ {t("불러오기 실패", "Failed to load")}</span> — {loadError}</div></div>
     {:else if current}
       <header class="head">
         <span class="t1">{current.name}</span>
-        <span class="chip">⎇ {current.root.branch ?? "브랜치 없음"} · {current.root.rel}/</span>
+        <span class="chip">⎇ {current.root.branch ?? t("브랜치 없음", "No branch")} · {current.root.rel}/</span>
         {#if current.root.warning}<span class="chip warn">{current.root.warning}</span>{/if}
         <span class="sp"></span>
-        <div class="seg" role="group" aria-label="터미널 배치">
+        <div class="seg" role="group" aria-label={t("터미널 배치", "Terminal layout")}>
           {#each LAYOUTS as l (l.v)}
             <button
               class="segb"
@@ -514,55 +530,55 @@
       </header>
       {#each current.errors as err (err.path)}
         <div class="band">
-          <span class="b"><span class="crit">✕</span> 읽기 실패</span>
+          <span class="b"><span class="crit">✕</span> {t("읽기 실패", "Read failed")}</span>
           <span class="ink2">{err.path} — {err.message}</span>
           <span class="sp"></span>
-          <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>파일 열기</button>
+          <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>{t("파일 열기", "Open file")}</button>
         </div>
       {/each}
       {#if deps?.message}
         <div class="band">
-          <span class="b"><span class="crit">✕</span> 준비물이 빠졌습니다</span>
+          <span class="b"><span class="crit">✕</span> {t("준비물이 빠졌습니다", "Missing prerequisites")}</span>
           <span class="ink2">{depsError || deps.message}</span>
           <span class="sp"></span>
           {#if deps.installable}
             <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
-              {depsInstalling ? "설치 중…" : depsError ? "다시 시도" : "설치"}
+              {depsInstalling ? t("설치 중…", "Installing…") : depsError ? t("다시 시도", "Retry") : t("설치", "Install")}
             </button>
           {/if}
         </div>
       {/if}
       {#if forgePlugin?.update_available || forgeUpdateMsg}
         <div class="band">
-          <span class="b">forge {forgePlugin?.latest ?? ""} 사용 가능</span>
-          <span class="ink2">{forgeUpdateMsg || `설치됨 ${forgePlugin?.installed} · 프로젝트별로 따로 설치한 forge는 그대로입니다`}</span>
+          <span class="b">forge {forgePlugin?.latest ?? ""} {t("사용 가능", "available")}</span>
+          <span class="ink2">{forgeUpdateMsg || t(`설치됨 ${forgePlugin?.installed} · 프로젝트별로 따로 설치한 forge는 그대로입니다`, `Installed ${forgePlugin?.installed} · per-project forge installs are left as is`)}</span>
           <span class="sp"></span>
           {#if forgeUpdateMsg}
-            <button class="btn sm" onclick={() => (forgeUpdateMsg = "")}>닫기</button>
+            <button class="btn sm" onclick={() => (forgeUpdateMsg = "")}>{t("닫기", "Close")}</button>
           {:else}
-            <button class="btn sm" disabled={forgeUpdating} onclick={updateForgePlugin}>{forgeUpdating ? "업데이트 중…" : "업데이트"}</button>
+            <button class="btn sm" disabled={forgeUpdating} onclick={updateForgePlugin}>{forgeUpdating ? t("업데이트 중…", "Updating…") : t("업데이트", "Update")}</button>
           {/if}
         </div>
       {/if}
       {#if forgePlugin?.untested}
         <div class="band">
           <span class="b">forge {forgePlugin.installed}</span>
-          <span class="ink2">Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다</span>
+          <span class="ink2">{t("Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다", "Newer than the forge version Anvil was tested with (0.9.x); the board may be inaccurate")}</span>
         </div>
       {/if}
       {#if needLogin}
         <div class="band">
-          <span class="b">claude CLI 설치됨</span><span class="ink2">터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다</span>
+          <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span><span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
           <span class="sp"></span>
-          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>로그인</button>
+          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
         </div>
       {/if}
       {#if newVersion}
         <div class="band">
           {#if updateError}
-            <span class="b"><span class="crit">✕</span> 업데이트 실패</span><span class="ink2">{updateError}</span>
+            <span class="b"><span class="crit">✕</span> {t("업데이트 실패", "Update failed")}</span><span class="ink2">{updateError}</span>
           {:else}
-            <span class="b">새 버전 준비됨</span><span class="ink2">v{newVersion}</span>
+            <span class="b">{t("새 버전 준비됨", "New version ready")}</span><span class="ink2">v{newVersion}</span>
           {/if}
           <span class="sp"></span>
           <button
@@ -575,23 +591,23 @@
                 updating = false;
                 updateError = String(e);
               });
-            }}>{updating ? "업데이트 중…" : updateError ? "다시 시도" : "업데이트·재시작"}</button>
+            }}>{updating ? t("업데이트 중…", "Updating…") : updateError ? t("다시 시도", "Retry") : t("업데이트·재시작", "Update & restart")}</button>
         </div>
       {/if}
       {#if fillError}
         <div class="band">
-          <span class="b">✕ 명령을 채우지 못했습니다</span><span class="ink2">{fillError}</span>
+          <span class="b">✕ {t("명령을 채우지 못했습니다", "Could not fill the command")}</span><span class="ink2">{fillError}</span>
           <span class="sp"></span>
-          <button class="btn sm" onclick={() => (fillError = "")}>닫기</button>
+          <button class="btn sm" onclick={() => (fillError = "")}>{t("닫기", "Close")}</button>
         </div>
       {/if}
       {#if tabs.length}
         <nav class="tabs">
-          <button class="tab" class:on={activeTab === null} onclick={() => showTab(null)}>보드</button>
-          {#each tabs as t, i (t.project + t.rel)}
+          <button class="tab" class:on={activeTab === null} onclick={() => showTab(null)}>{t("보드", "Board")}</button>
+          {#each tabs as tab, i (tab.project + tab.rel)}
             <span class="tab" class:on={activeTab === i}>
-              <button class="tl" onclick={() => showTab(i)} title={t.rel}>{t.label}</button>
-              <button class="x" aria-label="탭 닫기" onclick={() => closeTab(i)}>×</button>
+              <button class="tl" onclick={() => showTab(i)} title={tab.rel}>{tab.label}</button>
+              <button class="x" aria-label={t("탭 닫기", "Close tab")} onclick={() => closeTab(i)}>×</button>
             </span>
           {/each}
         </nav>
@@ -610,7 +626,7 @@
         {folded}
       />
       <div class="body" style="grid-template-columns: {folded === 'plan' ? '36px 6px minmax(0, 1fr)' : folded === 'run' ? 'minmax(0, 1fr) 6px 36px' : `minmax(0, ${split}fr) 6px minmax(0, ${1 - split}fr)`}">
-        <div class="vsplit" role="separator" aria-orientation="vertical" aria-label="계획·실행 폭 조절" onpointerdown={drag}></div>
+        <div class="vsplit" role="separator" aria-orientation="vertical" aria-label={t("계획·실행 폭 조절", "Resize plan/run")} onpointerdown={drag}></div>
         {#if names[current.path]}
           {#each ROLES as r, i (r)}
             {@const s = sessionOf(current.path, r)}
@@ -619,9 +635,9 @@
                  같은 grid 행이라 높이가 같이 맞춰져 아래 터미널 머리줄이 나란하다. -->
             {#if folded === r}
               <!-- 접힌 열 = 세로 레일. 흐름도의 관은 여기로 꽂히고, 누르면 펼친다(터미널은 숨기기만 해 연결 유지) -->
-              <button class="foldrail info-{r} foldrail-{r}" onclick={unfold} aria-label="{roleLabel[r]} 세션 펼치기" title="{roleLabel[r]} 세션 펼치기">
+              <button class="foldrail info-{r} foldrail-{r}" onclick={unfold} aria-label={t(`${roleLabel[r]} 세션 펼치기`, `Expand ${roleLabel[r]} session`)} title={t(`${roleLabel[r]} 세션 펼치기`, `Expand ${roleLabel[r]} session`)}>
                 {#if s?.alive}<span class="pip {pipClass(s)}"></span>{/if}
-                <span class="vt">{roleLabel[r]} 세션 · {stateLabel(s)}</span>
+                <span class="vt">{t(`${roleLabel[r]} 세션`, `${roleLabel[r]} session`)} · {stateLabel(s)}</span>
               </button>
             {:else}
             <div class="info info-{r}">
@@ -635,11 +651,11 @@
                   {/key}
                 {:else}
                   <div class="pband">
-                    <span class="kicker">계획</span>
-                    <span class="tt">후속후보에서 착수하거나 새 계획을 시작하세요</span>
-                    <button class="btn sm" onclick={() => (listOpen = "followups")}>후속후보 {followupCount}건 보기</button>
+                    <span class="kicker">{t("계획", "Plan")}</span>
+                    <span class="tt">{t("후속후보에서 착수하거나 새 계획을 시작하세요", "Start from a follow-up or begin a new plan")}</span>
+                    <button class="btn sm" onclick={() => (listOpen = "followups")}>{t(`후속후보 ${followupCount}건 보기`, `View ${followupCount} follow-ups`)}</button>
                     <div class="pline2">
-                      <span class="t3">후속후보 착수는 목록의 「착수」로</span>
+                      <span class="t3">{t("후속후보 착수는 목록의 「착수」로", "Start follow-ups via \"Start\" in the list")}</span>
                       <span class="sp"></span>
                       <Shortcuts role="plan" items={shortcuts.plan} blocked={planBlocked} onFill={(t) => fill("plan", t)} onChange={(v) => setShortcuts("plan", v)} {commands} />
                     </div>
@@ -649,7 +665,7 @@
             {/if}
             <div class="cell term-{r}" class:folded={folded === r}>
               <!-- 유입 띠: 이 터미널은 위 흐름도의 같은 색 노드·보드 버튼에서 입력을 받는다 -->
-              <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title="보드 버튼이 이 세션 입력창에 명령을 채웁니다">
+              <div class="feed {r}" data-flow={s?.alive && s.state === "working" ? "active" : "idle"} title={t("보드 버튼이 이 세션 입력창에 명령을 채웁니다", "Board buttons fill commands into this session's input")}>
                 {#key lastFill.n}{#if lastFill.n && lastFill.role === r}<span class="fpulse"></span>{/if}{/key}
               </div>
               <SessionPane
@@ -674,10 +690,10 @@
             <div class="dh">
               <span class="t3">{currentTab.rel}</span>
               <span class="sp"></span>
-              <button class="x on" aria-label="문서 닫기" onclick={() => showTab(null)}>×</button>
+              <button class="x on" aria-label={t("문서 닫기", "Close document")} onclick={() => showTab(null)}>×</button>
             </div>
             {#if docError}
-              <div class="error"><span class="b">✕ 읽기 실패</span> — {docError}</div>
+              <div class="error"><span class="b">✕ {t("읽기 실패", "Read failed")}</span> — {docError}</div>
             {:else}
               <div class="md">{@html docHtml}</div>
             {/if}
@@ -686,17 +702,17 @@
       </div>
       <footer class="status">
         <span>{current.name}{current.root.branch ? ` · ${current.root.branch}` : ""}</span>
-        <span>백로그 {current.backlog.length} · 후속후보 {current.followups.length}</span>
+        <span>{t("백로그", "Backlog")} {current.backlog.length} · {t("후속후보", "Follow-ups")} {current.followups.length}</span>
         {#if waitingElsewhere.length}
-          <span class="bell">🔔 {waitingElsewhere[0]}이 입력을 기다립니다{waitingElsewhere.length > 1 ? ` 외 ${waitingElsewhere.length - 1}` : ""}</span>
+          <span class="bell">🔔 {t(`${waitingElsewhere[0]}이 입력을 기다립니다${waitingElsewhere.length > 1 ? ` 외 ${waitingElsewhere.length - 1}` : ""}`, `${waitingElsewhere[0]}${waitingElsewhere.length > 1 ? ` and ${waitingElsewhere.length - 1} more` : ""} waiting for input`)}</span>
         {/if}
       </footer>
     {:else}
       <div class="center">
         <div class="welcome">
-          <span class="t1">등록한 프로젝트가 없습니다</span>
-          <div class="ink2">forge를 쓰는 프로젝트 폴더를 추가하면 그 프로젝트의 .forge 상태가 보드로 보입니다.</div>
-          <button class="btn" onclick={addProject}>＋ 프로젝트 추가</button>
+          <span class="t1">{t("등록한 프로젝트가 없습니다", "No projects registered")}</span>
+          <div class="ink2">{t("forge를 쓰는 프로젝트 폴더를 추가하면 그 프로젝트의 .forge 상태가 보드로 보입니다.", "Add a project folder that uses forge to see its .forge state on the board.")}</div>
+          <button class="btn" onclick={addProject}>＋ {t("프로젝트 추가", "Add project")}</button>
         </div>
       </div>
     {/if}

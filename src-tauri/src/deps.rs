@@ -18,7 +18,7 @@ impl Need {
         match self {
             Need::Tmux => "tmux",
             Need::Claude => "claude CLI",
-            Need::Forge => "forge 플러그인",
+            Need::Forge => crate::i18n::tr("forge 플러그인", "forge plugin"),
         }
     }
 }
@@ -67,7 +67,7 @@ pub fn install_script(needs: &[Need], has_brew: bool, has_jq: bool) -> Result<St
     for n in needs {
         match n {
             Need::Tmux if !has_brew => {
-                return Err("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh 에서 설치한 뒤 다시 누르세요".into())
+                return Err(crate::i18n::tr("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh 에서 설치한 뒤 다시 누르세요", "Installing tmux requires Homebrew — install it from https://brew.sh and try again").into())
             }
             Need::Tmux => lines.push("brew install tmux".into()),
             Need::Claude => lines.push("curl -fsSL https://claude.ai/install.sh | bash".into()),
@@ -100,7 +100,7 @@ pub fn status() -> DepsStatus {
     }
     let needs = missing(probe, forge_installed(&home()));
     let message = (!needs.is_empty())
-        .then(|| format!("필요: {}", needs.iter().map(|n| n.label()).collect::<Vec<_>>().join(" · ")));
+        .then(|| format!("{}{}", crate::i18n::tr("필요: ", "Required: "), needs.iter().map(|n| n.label()).collect::<Vec<_>>().join(" · ")));
     DepsStatus { installable: cfg!(target_os = "macos") && !needs.is_empty(), needs, message }
 }
 
@@ -127,7 +127,7 @@ pub fn open_login() -> Result<(), String> {
         .args(["-e", "tell application \"Terminal\" to do script \"claude\"", "-e", "tell application \"Terminal\" to activate"])
         .status()
         .map_err(|e| e.to_string())
-        .and_then(|s| if s.success() { Ok(()) } else { Err("터미널을 열지 못했습니다".into()) })
+        .and_then(|s| if s.success() { Ok(()) } else { Err(crate::i18n::tr("터미널을 열지 못했습니다", "Could not open a terminal").into()) })
 }
 
 // ---------- forge 플러그인 버전 ----------
@@ -193,7 +193,7 @@ pub fn forge_plugin_update() -> Result<(), String> {
     if out.status.success() {
         Ok(())
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("업데이트 실패").to_string())
+        Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or(crate::i18n::tr("업데이트 실패", "Update failed")).to_string())
     }
 }
 

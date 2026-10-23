@@ -1,10 +1,19 @@
+import { t } from "./i18n.svelte";
 import type { Role, SessionState, Snapshot } from "./types";
 
-export const roleLabel: Record<Role, string> = { plan: "계획", run: "실행" };
+export const roleLabel: Record<Role, string> = {
+  get plan() { return t("계획", "Plan"); },
+  get run() { return t("실행", "Run"); },
+};
 
 export function stateLabel(s: SessionState | null): string {
-  if (!s?.alive) return "없음";
-  return { working: "작업 중", waiting: "입력 대기", starting: "시작 중", ended: "종료" }[s.state];
+  if (!s?.alive) return t("없음", "None");
+  return {
+    working: t("작업 중", "Working"),
+    waiting: t("입력 대기", "Waiting for input"),
+    starting: t("시작 중", "Starting"),
+    ended: t("종료", "Ended"),
+  }[s.state];
 }
 
 /** 시안의 상태 점: 작업 중 = 파랑(run), 입력 대기 = 노랑(wait), 그 밖은 빈 테두리 */

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { t as tx } from "./i18n.svelte";
 
   /** 열 머리판의 단축 버튼 — 누르면 그 세션 입력창에 명령을 채운다(Enter는 사람이). 버튼 이름 = 명령어 그대로.
       ＋로 추가, 버튼에 올리면 나오는 ×로 삭제. */
@@ -78,11 +79,11 @@
   }
 </script>
 
-<div class="sc {role}" role="group" aria-label="{role === 'plan' ? '계획' : '실행'} 세션 단축 버튼">
+<div class="sc {role}" role="group" aria-label={role === "plan" ? tx("계획 세션 단축 버튼", "Plan session shortcuts") : tx("실행 세션 단축 버튼", "Run session shortcuts")}>
   {#each items as t (t)}
     <span class="chip">
-      <button class="go" disabled={!!blocked} title={blocked ?? `${role === "plan" ? "계획" : "실행"} 세션 입력창에 ${t}를 채웁니다(Enter는 직접)`} onclick={() => onFill(t)}>{t}</button>
-      <button class="del" aria-label="{t} 단축 버튼 삭제" title="삭제" onclick={() => onChange(items.filter((x) => x !== t))}>×</button>
+      <button class="go" disabled={!!blocked} title={blocked ?? tx(`${role === "plan" ? "계획" : "실행"} 세션 입력창에 ${t}를 채웁니다(Enter는 직접)`, `Fills ${t} into the ${role === "plan" ? "plan" : "run"} session input (press Enter yourself)`)} onclick={() => onFill(t)}>{t}</button>
+      <button class="del" aria-label={tx(`${t} 단축 버튼 삭제`, `Delete shortcut ${t}`)} title={tx("삭제", "Delete")} onclick={() => onChange(items.filter((x) => x !== t))}>×</button>
     </span>
   {/each}
   {#if adding}
@@ -92,7 +93,7 @@
         bind:value={draft}
         class="add-in"
         role="combobox"
-        aria-label="추가할 명령어"
+        aria-label={tx("추가할 명령어", "Command to add")}
         aria-expanded={hints.length > 0}
         aria-controls={listId}
         aria-activedescendant={hints[hi] ? `${listId}-${hi}` : undefined}
@@ -104,7 +105,7 @@
         onblur={() => (adding = false)}
       />
       {#if hints.length}
-        <ul class="hints" role="listbox" id={listId} aria-label="명령어 후보">
+        <ul class="hints" role="listbox" id={listId} aria-label={tx("명령어 후보", "Command suggestions")}>
           {#each hints as h, i (h)}
             <!-- mousedown에서 막아야 입력칸 blur(닫힘)보다 먼저 고를 수 있다 -->
             <li
@@ -120,7 +121,7 @@
       {/if}
     </span>
   {:else}
-    <button class="plus" aria-label="단축 버튼 추가" title="단축 버튼 추가" onclick={open}>＋</button>
+    <button class="plus" aria-label={tx("단축 버튼 추가", "Add shortcut")} title={tx("단축 버튼 추가", "Add shortcut")} onclick={open}>＋</button>
   {/if}
 </div>
 

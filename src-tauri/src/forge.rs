@@ -61,7 +61,7 @@ pub fn resolve_root(project: &Path, head: &Head) -> RootInfo {
         _ => RootInfo {
             branch: None,
             rel: ".forge".into(),
-            warning: Some("이름 있는 브랜치가 아니라 기본 .forge/ 를 읽습니다".into()),
+            warning: Some(crate::i18n::tr("이름 있는 브랜치가 아니라 기본 .forge/ 를 읽습니다", "Not on a named branch; reading the default .forge/").into()),
         },
     }
 }
@@ -100,7 +100,7 @@ fn marker(text: &str, name: &str) -> Option<String> {
 fn title_of(text: &str) -> String {
     text.lines()
         .find_map(|l| l.strip_prefix("# "))
-        .unwrap_or("(제목 없음)")
+        .unwrap_or(crate::i18n::tr("(제목 없음)", "(untitled)"))
         .trim()
         .to_string()
 }
@@ -251,13 +251,13 @@ impl Reader {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(s) => Some(s),
                 Err(_) => {
-                    self.fail(p, "UTF-8 문서가 아닙니다. 이 파일만 건너뛰었습니다.");
+                    self.fail(p, crate::i18n::tr("UTF-8 문서가 아닙니다. 이 파일만 건너뛰었습니다.", "Not a UTF-8 document. Skipped this file only."));
                     None
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {
-                self.fail(p, &format!("읽을 수 없습니다({e}). 이 파일만 건너뛰었습니다."));
+                self.fail(p, &format!("{}({e}){}", crate::i18n::tr("읽을 수 없습니다", "Cannot read"), crate::i18n::tr(". 이 파일만 건너뛰었습니다.", ". Skipped this file only.")));
                 None
             }
         }
@@ -420,7 +420,7 @@ pub fn snapshot_with_head(project: &Path, head: &Head) -> Snapshot {
         driving_session: None,
     };
     if !s.has_forge {
-        s.headline = "forge 없음".into();
+        s.headline = crate::i18n::tr("forge 없음", "No forge").into();
         return s;
     }
     let root = project.join(&root_info.rel);
@@ -535,7 +535,7 @@ fn read_backlog(r: &mut Reader, dir: &Path) -> Vec<PlanCard> {
         let p = dir.join(&f);
         let Some(text) = r.read(&p) else { continue };
         let Some(slug) = marker(&text, "forge-slug") else {
-            r.fail(&p, "forge-slug 마커가 없습니다. 이 파일만 건너뛰었습니다.");
+            r.fail(&p, crate::i18n::tr("forge-slug 마커가 없습니다. 이 파일만 건너뛰었습니다.", "No forge-slug marker. Skipped this file only."));
             continue;
         };
         let priority = match marker(&text, "priority").as_deref() {
@@ -587,24 +587,24 @@ fn read_task_dir(r: &mut Reader, dir: &Path, name: &str) -> Option<TaskCard> {
 fn headline(s: &Snapshot) -> String {
     let num = |t: Option<u32>| t.map(|n| format!(" #{n}")).unwrap_or_default();
     if s.loop_state.as_ref().is_some_and(|l| l.wall.is_some()) {
-        return "루프 정지".into();
+        return crate::i18n::tr("루프 정지", "Loop halted").into();
     }
     let failed = |v: &Option<String>| v.as_deref().map(norm).as_deref() == Some("failed");
     if let Some(a) = s.active.as_ref().filter(|a| failed(&a.verified)) {
-        return format!("검증 실패{}", num(a.task));
+        return format!("{}{}", crate::i18n::tr("검증 실패", "Verification failed"), num(a.task));
     }
     if let Some(e) = s.executed.iter().find(|e| failed(&e.verified)) {
-        return format!("검증 실패{}", num(e.task));
+        return format!("{}{}", crate::i18n::tr("검증 실패", "Verification failed"), num(e.task));
     }
     if let Some(a) = &s.active {
         match a.stage {
-            Stage::Run => return format!("실행 중{}", num(a.task)),
-            Stage::Retro => return "회고 대기".into(),
-            Stage::Seal => return format!("봉인 대기{}", num(a.task)),
+            Stage::Run => return format!("{}{}", crate::i18n::tr("실행 중", "Running"), num(a.task)),
+            Stage::Retro => return crate::i18n::tr("회고 대기", "Awaiting retro").into(),
+            Stage::Seal => return format!("{}{}", crate::i18n::tr("봉인 대기", "Awaiting seal"), num(a.task)),
         }
     }
     if !s.executed.is_empty() {
-        return "회고 대기".into();
+        return crate::i18n::tr("회고 대기", "Awaiting retro").into();
     }
-    format!("백로그 {}", s.backlog.len())
+    format!("{} {}", crate::i18n::tr("백로그", "Backlog"), s.backlog.len())
 }

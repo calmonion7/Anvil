@@ -6,6 +6,7 @@
   import { invoke, Channel } from "@tauri-apps/api/core";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
+  import { t } from "./i18n.svelte";
   import "@xterm/xterm/css/xterm.css";
   import { onMount } from "svelte";
 
@@ -41,7 +42,7 @@
     const onData = new Channel<string>();
     onData.onmessage = (s) => term.write(s);
     invoke("term_open", { id, name, cols: term.cols, rows: term.rows, onData }).catch((e) =>
-      term.write(`\r\n[세션에 붙지 못했습니다: ${e}]\r\n`),
+      term.write(t(`\r\n[세션에 붙지 못했습니다: ${e}]\r\n`, `\r\n[Could not attach to session: ${e}]\r\n`)),
     );
     const send = (d: string) => invoke("term_write", { id, data: d });
 
