@@ -90,12 +90,21 @@ fn probe(prog: &str, args: &[&str]) -> bool {
 }
 
 fn home() -> std::path::PathBuf {
-    std::env::var("HOME").unwrap_or_default().into()
+    crate::session::claude_home()
 }
 
 pub fn status() -> DepsStatus {
     if cfg!(windows) {
-        let message = backend_missing(true, probe).map(String::from);
+        // 윈도우: tmux · claude는 WSL 안에서 확인, forge는 WSL 홈의 플러그인 목록으로.
+        let message = backend_missing(true, probe).map(String::from).or_else(|| {
+            (!forge_installed(&home())).then(|| {
+                crate::i18n::tr(
+                    "WSL의 claude에 forge 플러그인 설치 필요: `wsl -- bash -lc \"claude plugin marketplace add gyuha/forge && claude plugin install forge@forge\"`",
+                    "Install the forge plugin in WSL's claude: `wsl -- bash -lc \"claude plugin marketplace add gyuha/forge && claude plugin install forge@forge\"`",
+                )
+                .to_string()
+            })
+        });
         return DepsStatus { needs: vec![], message, installable: false };
     }
     let needs = missing(probe, forge_installed(&home()));
@@ -175,19 +184,14 @@ pub fn forge_plugin_from(installed: Option<String>, latest: Option<String>) -> F
 
 /// 마켓플레이스를 새로 받아(네트워크) 설치 버전과 비교한다.
 pub fn forge_plugin_status() -> ForgePlugin {
-    let _ = Command::new("claude")
-        .args(["plugin", "marketplace", "update", "forge"])
-        .env("PATH", login_path())
-        .output();
+    let _ = crate::session::claude_command(&["plugin", "marketplace", "update", "forge"]).output();
     let home = home();
     forge_plugin_from(forge_installed_version(&home), forge_latest_version(&home))
 }
 
 /// 사용자 범위 forge를 최신으로. 열린 claude 세션은 재시작해야 적용된다.
 pub fn forge_plugin_update() -> Result<(), String> {
-    let out = Command::new("claude")
-        .args(["plugin", "update", FORGE_PLUGIN])
-        .env("PATH", login_path())
+    let out = crate::session::claude_command(&["plugin", "update", FORGE_PLUGIN])
         .output()
         .map_err(|e| e.to_string())?;
     if out.status.success() {

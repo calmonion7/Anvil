@@ -372,8 +372,7 @@ fn load_hidden(app: &AppHandle) -> Vec<HiddenFollowup> {
 /// 단축 버튼 자동완성 — 설치된 플러그인·사용자·이 프로젝트의 슬래시 명령(프런트가 프로젝트마다 한 번 읽어 둔다)
 #[tauri::command]
 fn slash_commands(project: String) -> Vec<String> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    slash::collect(&Path::new(&home).join(".claude"), Some(Path::new(&project)))
+    slash::collect(&session::claude_home().join(".claude"), Some(Path::new(&project)))
 }
 
 /// 준비물(tmux · claude CLI · forge) 확인 — 빠졌으면 띠 문구와 [설치] 가능 여부
