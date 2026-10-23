@@ -303,9 +303,15 @@ fn term_close(state: State<AppState>, id: u32) {
     state.terms.close(id);
 }
 
+/// 입력 대기 알림. macOS는 osascript(session::notify), 그 밖은 tauri 알림(윈도우 토스트 등).
 #[tauri::command]
-fn notify(body: String) {
-    session::notify(&body);
+fn notify(app: AppHandle, body: String) {
+    if cfg!(target_os = "macos") {
+        session::notify(&body);
+    } else {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app.notification().builder().title("Anvil").body(body).show();
+    }
 }
 
 /// 보드 버튼: 역할에 맞는 세션 입력창에 forge 명령을 채운다(Enter 없음). 세션이 없으면 띄우고
@@ -489,6 +495,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         // 창 크기·위치·최대화만 기억한다 — macOS 전체화면은 복원하지 않는다.
         .plugin(
             tauri_plugin_window_state::Builder::new()

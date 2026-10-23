@@ -18,6 +18,10 @@ pub const SOCKET: &str = "anvil";
 pub fn login_path() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
     PATH.get_or_init(|| {
+        // 윈도우는 tmux·claude가 WSL 안에 있어 이 PATH는 wsl.exe를 찾는 데만 쓴다 — 그대로 둔다.
+        if cfg!(windows) {
+            return std::env::var("PATH").unwrap_or_default();
+        }
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
         let out = Command::new(&shell)
             .args(["-ilc", "printf '__ANVIL_PATH__%s__END__' \"$PATH\""])
@@ -42,8 +46,18 @@ fn lang() -> String {
 
 /// tmux에 넘기는 경로. 윈도우에선 tmux가 WSL 안에 있으므로 WSL 경로로 바꾼다.
 pub fn tmux_path(p: &Path) -> String {
+    host_path(p, cfg!(windows))
+}
+
+fn host_path(p: &Path, windows: bool) -> String {
     let s = p.to_string_lossy();
-    if cfg!(windows) { crate::wsl::to_wsl(&s) } else { s.into_owned() }
+    if windows { crate::wsl::to_wsl(&s) } else { s.into_owned() }
+}
+
+/// claude 훅·상태줄에 등록할 스크립트 실행 명령. 윈도우에선 WSL 안의 claude가 부르므로 WSL 경로 + bash.
+fn script_cmd(p: &Path, windows: bool) -> String {
+    let path = host_path(p, windows).replace('\'', r"'\''");
+    if windows { format!("bash '{path}'") } else { format!("'{path}'") }
 }
 
 /// tmux를 부르는 유일한 경로: (프로그램, 공통 인자). 윈도우에선 `wsl.exe -- tmux …`.
@@ -70,7 +84,8 @@ pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> 
         if !probe("wsl.exe", &["--", "true"]) || !probe("wsl.exe", &["--", "tmux", "-V"]) {
             return Some("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`");
         }
-        if !probe("wsl.exe", &["--", "claude", "--version"]) {
+        // 로그인 셸로 물어야 ~/.local/bin(claude 기본 설치 위치)이 PATH에 잡힌다.
+        if !probe("wsl.exe", &["--", "bash", "-lc", "claude --version"]) {
             return Some("WSL에 claude CLI 설치 필요: `wsl -- npm install -g @anthropic-ai/claude-code` 후 `wsl -- claude`로 로그인");
         }
     } else {
@@ -193,7 +208,8 @@ impl Files {
         let statusline = self.dir.join("anvil-statusline.sh");
         std::fs::write(&statusline, STATUSLINE_SCRIPT)?;
         make_executable(&statusline)?;
-        let cmd = |state: &str| serde_json::json!([{ "hooks": [{ "type": "command", "command": format!("'{}' {state}", script.display()) }] }]);
+        let hook = script_cmd(&script, cfg!(windows));
+        let cmd = |state: &str| serde_json::json!([{ "hooks": [{ "type": "command", "command": format!("{hook} {state}") }] }]);
         let settings = serde_json::json!({ "hooks": {
             "SessionStart": cmd("waiting"),
             "UserPromptSubmit": cmd("working"),
@@ -201,7 +217,7 @@ impl Files {
             "Stop": cmd("waiting"),
             "Notification": cmd("waiting"),
             "SessionEnd": cmd("ended"),
-        }, "statusLine": { "type": "command", "command": format!("'{}'", statusline.display()) } });
+        }, "statusLine": { "type": "command", "command": script_cmd(&statusline, cfg!(windows)) } });
         std::fs::write(self.hooks(), serde_json::to_string_pretty(&settings)?)?;
         Ok(())
     }
@@ -306,6 +322,29 @@ pub fn live_sessions(files: &Files) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// 세션 안에서 도는 셸 명령. 윈도우(WSL)에선 앱의 PATH를 넘기지 않으므로 claude 기본 설치 위치를 앞에 붙인다.
+fn session_cmd(title: &str, model: &str, hooks: &Path, windows: bool) -> String {
+    let model_arg = if model == "default" { String::new() } else { format!("--model {model} ") };
+    let path = if windows { r#"PATH="$HOME/.local/bin:$PATH"; "# } else { "" };
+    format!(
+        "{UNSET_PARENT_CLAUDE}{path}exec claude -n {} {model_arg}--settings {}",
+        sh_quote(title),
+        sh_quote(&host_path(hooks, windows))
+    )
+}
+
+/// tmux 세션 환경. 윈도우 PATH는 WSL 안에서 쓸모없어 넘기지 않는다.
+fn session_env(name: &str, title: &str, windows: bool) -> Vec<String> {
+    let mut v = vec![format!("ANVIL_SESSION={name}")];
+    if !windows {
+        v.push(format!("PATH={}", login_path()));
+    }
+    v.push(format!("LANG={}", lang()));
+    // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 이 이름을 다시 붙인다.
+    v.push(format!("CC_SESSION_NAME={title}"));
+    v
+}
+
 pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String> {
     let name = session_name(project, role);
     if live_sessions(files).contains(&name) {
@@ -314,19 +353,14 @@ pub fn start(files: &Files, project: &Path, role: &str) -> Result<String, String
     let _ = std::fs::remove_file(files.sessions().join(format!("{name}.json")));
     let _ = std::fs::remove_file(files.models().join(format!("{name}.json")));
     let (title, _) = session_title(project, role);
-    let model = role_model(files, role);
-    let model_arg = if model == "default" { String::new() } else { format!("--model {model} ") };
-    let cmd = format!(
-        "{UNSET_PARENT_CLAUDE}exec claude -n {} {model_arg}--settings {}",
-        sh_quote(&title),
-        sh_quote(&files.hooks().to_string_lossy())
-    );
-    let out = tmux(&files.conf())
-        .args(["new-session", "-d", "-s", &name, "-x", "200", "-y", "50", "-c"])
-        .arg(tmux_path(project))
-        .args(["-e", &format!("ANVIL_SESSION={name}"), "-e", &format!("PATH={}", login_path()), "-e", &format!("LANG={}", lang())])
-        // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 이 이름을 다시 붙인다.
-        .args(["-e", &format!("CC_SESSION_NAME={title}")])
+    let windows = cfg!(windows);
+    let cmd = session_cmd(&title, &role_model(files, role), &files.hooks(), windows);
+    let mut c = tmux(&files.conf());
+    c.args(["new-session", "-d", "-s", &name, "-x", "200", "-y", "50", "-c"]).arg(tmux_path(project));
+    for e in session_env(&name, &title, windows) {
+        c.args(["-e", &e]);
+    }
+    let out = c
         .arg(cmd)
         .output()
         .map_err(|e| format!("tmux를 실행할 수 없습니다: {e}"))?;
@@ -592,9 +626,24 @@ mod tests {
 
     #[test]
     fn backend_missing_reports_claude_cli() {
-        let no_claude = |p: &str, a: &[&str]| p != "claude" && !a.contains(&"claude");
+        let no_claude = |p: &str, a: &[&str]| p != "claude" && !a.iter().any(|x| x.contains("claude"));
         assert!(backend_missing(false, no_claude).unwrap().contains("claude CLI 설치 필요"));
         assert!(backend_missing(true, no_claude).unwrap().contains("WSL에 claude CLI"));
+    }
+
+    /// 윈도우: claude는 WSL 안에서 돌므로 훅·설정 경로는 WSL 경로, 앱의 윈도우 PATH는 넘기지 않는다.
+    #[test]
+    fn windows_session_uses_wsl_paths_and_no_host_path() {
+        let hooks = Path::new(r"C:\Users\me\AppData\Roaming\com.taebro.anvil\hooks.json");
+        let cmd = session_cmd("[Anvil] [p] PLAN", "opus", hooks, true);
+        assert!(cmd.contains("--settings '/mnt/c/Users/me/AppData/Roaming/com.taebro.anvil/hooks.json'"), "{cmd}");
+        assert!(cmd.contains(r#"PATH="$HOME/.local/bin:$PATH"; exec claude"#), "{cmd}");
+        assert!(!session_env("n", "t", true).iter().any(|e| e.starts_with("PATH=")));
+        assert!(session_env("n", "t", false).iter().any(|e| e.starts_with("PATH=")));
+        let script = Path::new(r"C:\Users\me\AppData\Roaming\com.taebro.anvil\anvil-hook.sh");
+        assert_eq!(script_cmd(script, true), "bash '/mnt/c/Users/me/AppData/Roaming/com.taebro.anvil/anvil-hook.sh'");
+        assert_eq!(script_cmd(Path::new("/a/b c/h.sh"), false), "'/a/b c/h.sh'");
+        assert_eq!(session_cmd("t", "default", Path::new("/h.json"), false).contains("--model"), false);
     }
 
     #[test]

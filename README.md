@@ -27,7 +27,15 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
   ```
   xattr -cr /Applications/Anvil.app
   ```
-- **Windows · Linux**: 실험용. Windows는 WSL 안에 tmux와 claude CLI가 있어야 하고, 세션 상태 표시 · 알림은 아직 동작하지 않을 수 있다.
+- **Windows** (`.msi` / `-setup.exe`, 실험용): 앱은 윈도우에서, 세션은 **WSL 안**에서 돈다. WSL(Ubuntu)에 아래를 준비한다 — [설치] 버튼은 macOS 전용이라 직접 설치한다.
+  ```
+  wsl -- sudo apt install tmux jq
+  wsl -- bash -lc "curl -fsSL https://claude.ai/install.sh | bash"
+  wsl -- bash -lc "claude"                     # 한 번 로그인
+  wsl -- bash -lc "claude plugin marketplace add gyuha/forge && claude plugin install forge@forge"
+  ```
+  프로젝트 폴더는 윈도우 경로(`C:\…`)든 WSL 경로(`\\wsl$\…`)든 된다. 앱이 꺼져 있을 때의 알림은 없다(앱이 켜져 있으면 윈도우 알림으로 뜬다).
+- **Linux** (`.AppImage` / `.deb`, 실험용): tmux · claude CLI · forge를 직접 설치한다(`sudo apt install tmux jq` 등).
 
 설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.
 
