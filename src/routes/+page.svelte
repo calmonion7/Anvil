@@ -102,6 +102,12 @@
     invoke<DepsStatus>("deps_status")
       .then((d) => (deps = d))
       .catch(() => {});
+  /** [다시 확인] 전용 — 직전 [설치] 결과를 지운다. [설치] 직후 재확인(checkDeps)에선 결과가 남아야 하므로 여기서만 */
+  function recheckDeps() {
+    depsSteps = [];
+    depsError = "";
+    checkDeps();
+  }
   async function installDeps() {
     depsInstalling = true;
     depsError = "";
@@ -496,7 +502,7 @@
         <span class="b"><span class="crit">✕</span> {deps?.message ? t("준비물이 빠졌습니다", "Missing prerequisites") : t("일부 설치 실패", "Some installs failed")}</span>
         <span class="ink2 msg">{#each linkParts(depsError || deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}</span>
         <span class="sp"></span>
-        <button class="btn sm quiet" disabled={depsInstalling} onclick={checkDeps}>{t("다시 확인", "Check again")}</button>
+        <button class="btn sm quiet" disabled={depsInstalling} onclick={recheckDeps}>{t("다시 확인", "Check again")}</button>
         {#if deps?.installable}
           <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
             {depsInstalling ? t("설치 중…", "Installing…") : depsError || depsSteps.length ? t("다시 시도", "Retry") : t("설치", "Install")}

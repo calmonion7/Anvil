@@ -70,6 +70,11 @@ export async function mockIpc(page: Page) {
             case "session_models": return {};
             case "session_fill": return `${args.project}-${args.role}`;
             case "read_doc": return `# 문서 ${args.rel}`;
+            // 준비물 — 기본은 null(띠 없음). 검사가 __deps·__depsInstall·__depsInstallError를 심으면 그 값.
+            case "deps_status": return w.__deps ?? null;
+            case "deps_install":
+              if (w.__depsInstallError) throw w.__depsInstallError;
+              return w.__depsInstall ?? [];
             case "slash_commands":
               return ["/eli5", "/forge:fg-ask", "/forge:fg-doctor", "/forge:fg-learn", "/forge:fg-next", "/forge:fg-run", "/forge:fg-status"];
             default: return null;
