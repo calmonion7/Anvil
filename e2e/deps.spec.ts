@@ -35,3 +35,28 @@ test("[다시 확인]이 설치 오류 문구를 지운다", async ({ page }) =>
   await expect(band).not.toContainText("설치 스크립트 오류");
   await expect(band).toContainText("필요: tmux");
 });
+
+// v0.1.5 — node 준비물이 띠에 뜨고 [설치] 결과가 항목별로 보인다
+test("node가 빠지면 띠에 뜨고 [설치] 결과에 node 항목이 보인다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript(() => {
+    const w = window as any;
+    w.__deps = { needs: ["node"], message: "필요: node", installable: true };
+    w.__depsInstall = [{ need: "node", label: "node", outcome: "failed", detail: "shasum 불일치" }];
+  });
+  await page.goto("/");
+  const band = page.locator(".band.top");
+  await expect(band).toContainText("필요: node");
+  await band.getByRole("button", { name: "설치" }).click();
+  await expect(band.locator("ul.steps")).toContainText("node");
+  await expect(band.locator("ul.steps")).toContainText("shasum 불일치");
+});
+
+// v0.1.5 — [세션 열기] 직후 터미널에 초점이 가 바로 타이핑된다(첫 실행 신뢰 질문)
+test("[세션 열기] 뒤 터미널에 초점이 간다", async ({ page }) => {
+  await mockIpc(page);
+  await page.goto("/");
+  await page.locator(".term-plan").getByRole("button", { name: "세션 열기" }).click();
+  await page.evaluate(() => (window as any).__emit("sessions", { "/p/alpha-plan": { state: "idle", sessionId: null, alive: true } }));
+  await expect(page.locator(".term-plan .xterm-helper-textarea")).toBeFocused();
+});

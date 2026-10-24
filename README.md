@@ -16,6 +16,7 @@ macOS 앱에는 **tmux 3.6a와 jq 1.8.1이 들어 있어** 따로 설치하지 �
 |---|---|---|
 | **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | `curl -fsSL https://claude.ai/install.sh \| bash` 후 터미널에서 `claude` 한 번 실행해 로그인 |
 | 개발자 도구 (git) | forge 플러그인 받기 | [설치]가 설치 창을 띄운다 (`xcode-select --install`) |
+| node | forge 훅(세션 시작·종료 등) 실행 | [설치]가 nodejs.org 공식본을 검증해 `~/.local/bin`에 넣는다(관리자 암호 없음) |
 | **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
 | tmux · jq | 세션 유지 · 세션별 모델 표시 | 앱에 내장(Windows·Linux는 직접 설치) |
 
@@ -31,13 +32,13 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
   ```
 - **Windows** (`.msi` / `-setup.exe`, 실험용): 앱은 윈도우에서, 세션은 **WSL 안**에서 돈다. WSL(Ubuntu)에 아래를 준비한다 — [설치] 버튼은 macOS 전용이라 직접 설치한다.
   ```
-  wsl -- sudo apt install tmux jq
+  wsl -- sudo apt install tmux jq nodejs
   wsl -- bash -lc "curl -fsSL https://claude.ai/install.sh | bash"
   wsl -- bash -lc "claude"                     # 한 번 로그인
   wsl -- bash -lc "claude plugin marketplace add gyuha/forge && claude plugin install forge@forge"
   ```
   프로젝트 폴더는 윈도우 경로(`C:\…`)든 WSL 경로(`\\wsl$\…`)든 된다. 알림은 윈도우 알림으로 뜬다(앱이 꺼져 있어도).
-- **Linux** (`.AppImage` / `.deb`, 실험용): tmux · claude CLI · forge를 직접 설치한다(`sudo apt install tmux jq` 등).
+- **Linux** (`.AppImage` / `.deb`, 실험용): tmux · node · claude CLI · forge를 직접 설치한다(`sudo apt install tmux jq nodejs` 등).
 
 설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.
 

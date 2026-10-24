@@ -1,5 +1,5 @@
 //! 준비물(tmux · claude CLI · forge 플러그인) 확인과 설치. 설치는 사용자가 [설치]를 누를 때만, macOS만.
-//! macOS는 tmux·jq가 앱에 내장돼 준비물이 claude CLI·forge뿐이다.
+//! macOS는 tmux·jq가 앱에 내장돼 준비물이 node·claude CLI·forge(+개발자 도구)다.
 
 use crate::session::{backend_missing, bundled_bin, login_path};
 use serde::Serialize;
@@ -12,6 +12,8 @@ pub enum Need {
     Tmux,
     /// macOS 명령어 라인 개발자 도구(git) — claude가 forge 마켓플레이스를 git으로 받는다
     DevTools,
+    /// forge 훅(SessionStart·Stop 등)이 node로 돈다 — 깨끗한 맥에는 없다
+    Node,
     Claude,
     Forge,
 }
@@ -21,6 +23,7 @@ impl Need {
         match self {
             Need::Tmux => "tmux",
             Need::DevTools => crate::i18n::tr("개발자 도구(git)", "Developer tools (git)"),
+            Need::Node => "node",
             Need::Claude => "claude CLI",
             Need::Forge => crate::i18n::tr("forge 플러그인", "forge plugin"),
         }
@@ -38,6 +41,8 @@ pub struct DepsStatus {
 
 const FORGE_MARKETPLACE: &str = "gyuha/forge";
 const FORGE_PLUGIN: &str = "forge@forge";
+/// macOS [설치]가 받는 node 버전(LTS). 올릴 때는 이 상수만 바꿔 릴리스한다.
+const NODE_VERSION: &str = "v22.20.0";
 
 /// claude가 기록하는 설치 목록에 forge 플러그인이 있는가.
 pub fn forge_installed(home: &Path) -> bool {
@@ -56,6 +61,9 @@ pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool, bundled_tmux:
     }
     if mac && !forge && !probe("xcode-select", &["-p"]) {
         v.push(Need::DevTools);
+    }
+    if !probe("node", &["--version"]) {
+        v.push(Need::Node);
     }
     if !probe("claude", &["--version"]) {
         v.push(Need::Claude);
@@ -93,11 +101,20 @@ pub fn step_cmd(need: Need, has_brew: bool) -> Result<String, String> {
             return Err(crate::i18n::tr("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh", "Installing tmux requires Homebrew — https://brew.sh").into())
         }
         Need::Tmux => "brew install tmux".into(),
-        Need::DevTools => "xcode-select --install".into(),
+        // 설치 창이 Anvil 뒤로 숨지 않게, 창이 뜰 때까지 몇 초 재시도하며 앞으로 가져온다(못 가져와도 결과는 그대로).
+        Need::DevTools => format!(
+            "xcode-select --install || exit $?\nfor i in $(seq 20); do osascript -e 'if application \"{XCODE_INSTALLER}\" is running then tell application \"{XCODE_INSTALLER}\" to activate' -e 'application \"{XCODE_INSTALLER}\" is running' 2>/dev/null | grep -q true && break; sleep 0.25; done\nexit 0"
+        ),
+        // nodejs.org 공식 압축본을 SHASUMS256으로 검증해 ~/.local/share/anvil/node에 풀고 ~/.local/bin에 심링크(관리자 암호 없음)
+        Need::Node => format!(
+            "set -e\nV={NODE_VERSION}; A=$(uname -m); [ \"$A\" = x86_64 ] && A=x64\nF=node-$V-darwin-$A.tar.xz; T=$(mktemp -d); cd \"$T\"\ncurl -fsSLO https://nodejs.org/dist/$V/$F\ncurl -fsSL https://nodejs.org/dist/$V/SHASUMS256.txt | grep \" $F$\" | shasum -a 256 -c -\nD=\"$HOME/.local/share/anvil/node\"; rm -rf \"$D\"; mkdir -p \"$D\" \"$HOME/.local/bin\"\ntar -xf \"$F\" -C \"$D\" --strip-components 1\nfor b in node npm npx; do ln -sf \"$D/bin/$b\" \"$HOME/.local/bin/$b\"; done\nrm -rf \"$T\""
+        ),
         Need::Claude => "curl -fsSL https://claude.ai/install.sh | bash".into(),
         Need::Forge => format!("set -e\nclaude plugin marketplace list | grep -qw forge || claude plugin marketplace add {FORGE_MARKETPLACE}\nclaude plugin install {FORGE_PLUGIN}"),
     })
 }
+
+const XCODE_INSTALLER: &str = "Install Command Line Developer Tools";
 
 /// 항목별로 이어서 설치한다 — 하나가 실패해도 나머지를 계속하고, claude가 실패하면 forge는 건너뛴다.
 pub fn install_with(needs: &[Need], has_brew: bool, mut run: impl FnMut(&str) -> Result<(), String>) -> Vec<Step> {
@@ -140,8 +157,12 @@ fn home() -> std::path::PathBuf {
 
 pub fn status() -> DepsStatus {
     if cfg!(windows) {
-        // 윈도우: tmux · claude는 WSL 안에서 확인, forge는 WSL 홈의 플러그인 목록으로.
+        // 윈도우: tmux · claude · node는 WSL 안에서 확인, forge는 WSL 홈의 플러그인 목록으로. node는 표시만 한다.
         let message = backend_missing(true, probe).map(String::from).or_else(|| {
+            (!probe("wsl.exe", &["--", "bash", "-lc", "node --version"])).then(|| {
+                crate::i18n::tr("WSL에 node 설치 필요(forge 훅이 node로 돈다): https://nodejs.org", "node is required in WSL (forge hooks run on node): https://nodejs.org").to_string()
+            })
+        }).or_else(|| {
             (!forge_installed(&home())).then(|| {
                 crate::i18n::tr(
                     "WSL의 claude에 forge 플러그인 설치 필요: `wsl -- bash -lc \"claude plugin marketplace add gyuha/forge && claude plugin install forge@forge\"`",
@@ -335,7 +356,9 @@ mod tests {
     /// 개발자 도구는 macOS 설치 창을 띄울 뿐이라 '시작됨', forge는 개발자 도구가 끝나기 전엔 건너뛴다
     #[test]
     fn deps_devtools_starts_installer_and_forge_waits() {
-        assert_eq!(step_cmd(Need::DevTools, false).unwrap(), "xcode-select --install");
+        let dt = step_cmd(Need::DevTools, false).unwrap();
+        assert!(dt.starts_with("xcode-select --install || exit $?"), "{dt}");
+        assert!(dt.contains("to activate") && dt.contains(XCODE_INSTALLER) && dt.ends_with("exit 0"), "설치 창을 앞으로 가져오되 실패해도 결과는 그대로: {dt}");
         let r = install_with(&[Need::DevTools, Need::Claude, Need::Forge], false, |_| Ok(()));
         assert_eq!(r.iter().map(|s| (s.need, s.outcome)).collect::<Vec<_>>(), vec![
             (Need::DevTools, Outcome::Started),
@@ -347,6 +370,33 @@ mod tests {
     }
 
     /// 마켓플레이스 등록 실패를 숨기지 않는다(이미 등록돼 있으면 통과)
+    #[test]
+    fn deps_node_missing_is_listed_regardless_of_forge() {
+        let no_node = |p: &str, _: &[&str]| p != "node";
+        assert_eq!(missing(no_node, true, true, true), vec![Need::Node], "forge가 있어도 확인한다");
+        assert_eq!(missing(no_node, true, true, false), vec![Need::Node], "macOS가 아니어도 띠에 표시한다");
+        let none = |_: &str, _: &[&str]| false;
+        assert_eq!(missing(none, false, true, true), vec![Need::DevTools, Need::Node, Need::Claude, Need::Forge], "설치 순서: 개발자 도구 → node → claude → forge");
+    }
+
+    #[test]
+    fn deps_node_installs_pinned_verified_archive_into_local_bin() {
+        let c = step_cmd(Need::Node, false).unwrap();
+        assert!(c.starts_with("set -e"), "{c}");
+        assert!(c.contains(&format!("V={NODE_VERSION}")) && NODE_VERSION.starts_with("v22."), "{c}");
+        assert!(c.contains("https://nodejs.org/dist/$V/$F") && c.contains("darwin-$A.tar.xz"), "{c}");
+        assert!(c.contains("SHASUMS256.txt") && c.contains("shasum -a 256 -c -"), "{c}");
+        assert!(c.contains("$HOME/.local/share/anvil/node"), "{c}");
+        assert!(c.contains("for b in node npm npx; do ln -sf \"$D/bin/$b\" \"$HOME/.local/bin/$b\""), "{c}");
+        let r = install_with(&[Need::DevTools, Need::Node, Need::Claude, Need::Forge], false, |_| Ok(()));
+        assert_eq!(r.iter().map(|s| (s.need, s.outcome)).collect::<Vec<_>>(), vec![
+            (Need::DevTools, Outcome::Started),
+            (Need::Node, Outcome::Ok),
+            (Need::Claude, Outcome::Ok),
+            (Need::Forge, Outcome::Skipped),
+        ]);
+    }
+
     #[test]
     fn deps_forge_marketplace_failure_is_not_swallowed() {
         let forge = step_cmd(Need::Forge, false).unwrap();

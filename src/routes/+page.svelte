@@ -690,6 +690,7 @@
                 live={models[n] ?? null}
                 focusTick={focus.name === n ? focus.tick : 0}
                 blocked={depsBlocked}
+                onstarted={() => (focus = { name: n, tick: focus.tick + 1 })}
               />
             </div>
           {/each}
