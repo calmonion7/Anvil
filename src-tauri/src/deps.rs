@@ -10,6 +10,8 @@ use std::process::Command;
 #[serde(rename_all = "lowercase")]
 pub enum Need {
     Tmux,
+    /// macOS 명령어 라인 개발자 도구(git) — claude가 forge 마켓플레이스를 git으로 받는다
+    DevTools,
     Claude,
     Forge,
 }
@@ -18,6 +20,7 @@ impl Need {
     fn label(self) -> &'static str {
         match self {
             Need::Tmux => "tmux",
+            Need::DevTools => crate::i18n::tr("개발자 도구(git)", "Developer tools (git)"),
             Need::Claude => "claude CLI",
             Need::Forge => crate::i18n::tr("forge 플러그인", "forge plugin"),
         }
@@ -45,10 +48,14 @@ pub fn forge_installed(home: &Path) -> bool {
 
 /// 빠진 준비물. `probe(프로그램, 인자)`가 실행 성공 여부를 알려준다.
 /// `bundled_tmux`: macOS 앱에 tmux가 내장돼 있으면 tmux는 준비물이 아니다(ADR 261024-202909).
-pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool, bundled_tmux: bool) -> Vec<Need> {
+/// `mac`: forge가 빠졌으면 개발자 도구(git)도 확인한다 — `git` 대신 `xcode-select -p`로 물어야 설치 창이 뜨지 않는다.
+pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool, bundled_tmux: bool, mac: bool) -> Vec<Need> {
     let mut v = Vec::new();
     if !bundled_tmux && !probe("tmux", &["-V"]) {
         v.push(Need::Tmux);
+    }
+    if mac && !forge && !probe("xcode-select", &["-p"]) {
+        v.push(Need::DevTools);
     }
     if !probe("claude", &["--version"]) {
         v.push(Need::Claude);
@@ -65,6 +72,8 @@ pub enum Outcome {
     Ok,
     Failed,
     Skipped,
+    /// macOS 설치 창을 띄웠다 — 사용자가 창에서 끝내야 한다
+    Started,
 }
 
 /// 설치 결과 한 항목 — 띠에 항목별로 보여 준다.
@@ -84,8 +93,9 @@ pub fn step_cmd(need: Need, has_brew: bool) -> Result<String, String> {
             return Err(crate::i18n::tr("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh", "Installing tmux requires Homebrew — https://brew.sh").into())
         }
         Need::Tmux => "brew install tmux".into(),
+        Need::DevTools => "xcode-select --install".into(),
         Need::Claude => "curl -fsSL https://claude.ai/install.sh | bash".into(),
-        Need::Forge => format!("claude plugin marketplace add {FORGE_MARKETPLACE} || true\nclaude plugin install {FORGE_PLUGIN}"),
+        Need::Forge => format!("set -e\nclaude plugin marketplace list | grep -qw forge || claude plugin marketplace add {FORGE_MARKETPLACE}\nclaude plugin install {FORGE_PLUGIN}"),
     })
 }
 
@@ -93,13 +103,20 @@ pub fn step_cmd(need: Need, has_brew: bool) -> Result<String, String> {
 pub fn install_with(needs: &[Need], has_brew: bool, mut run: impl FnMut(&str) -> Result<(), String>) -> Vec<Step> {
     let mut steps: Vec<Step> = Vec::new();
     for &need in needs {
-        let claude_failed = steps.iter().any(|s| s.need == Need::Claude && s.outcome != Outcome::Ok);
-        let result = if need == Need::Forge && claude_failed {
+        let not_ok = |n: Need| steps.iter().any(|s| s.need == n && s.outcome != Outcome::Ok);
+        let result = if need == Need::Forge && not_ok(Need::Claude) {
             Err((Outcome::Skipped, crate::i18n::tr("claude CLI가 먼저 필요합니다", "claude CLI is required first").to_string()))
+        } else if need == Need::Forge && not_ok(Need::DevTools) {
+            Err((Outcome::Skipped, crate::i18n::tr("개발자 도구 설치를 마친 뒤 [다시 확인] → [설치]", "Finish installing the developer tools, then [Check again] → [Install]").to_string()))
         } else {
             step_cmd(need, has_brew).and_then(|c| run(&c)).map_err(|e| (Outcome::Failed, e))
         };
         let (outcome, detail) = match result {
+            // 설치 창만 띄우고 바로 돌아온다
+            Ok(()) if need == Need::DevTools => (
+                Outcome::Started,
+                Some(crate::i18n::tr("설치 창이 열렸습니다 — 설치를 마친 뒤 [다시 확인]", "An installer window opened — finish it, then [Check again]").to_string()),
+            ),
             Ok(()) => (Outcome::Ok, None),
             Err((o, e)) => (o, Some(e)),
         };
@@ -135,7 +152,7 @@ pub fn status() -> DepsStatus {
         });
         return DepsStatus { needs: vec![], message, installable: false };
     }
-    let needs = missing(probe, forge_installed(&home()), bundled_bin().is_some());
+    let needs = missing(probe, forge_installed(&home()), bundled_bin().is_some(), cfg!(target_os = "macos"));
     let message = (!needs.is_empty())
         .then(|| format!("{}{}", crate::i18n::tr("필요: ", "Required: "), needs.iter().map(|n| n.label()).collect::<Vec<_>>().join(" · ")));
     DepsStatus { installable: cfg!(target_os = "macos") && !needs.is_empty(), needs, message }
@@ -154,10 +171,13 @@ pub fn install() -> Vec<Step> {
     })
 }
 
+/// 로그인 터미널에서 실행할 명령. 공식 설치본(~/.local/bin)은 새 셸 PATH에 없어 앞에 넣는다(v0.1.2 VM 실측).
+const LOGIN_CMD: &str = "export PATH=\\\"$HOME/.local/bin:$PATH\\\"; claude";
+
 /// 터미널 앱에서 claude를 열어 로그인하게 한다.
 pub fn open_login() -> Result<(), String> {
     Command::new("osascript")
-        .args(["-e", "tell application \"Terminal\" to do script \"claude\"", "-e", "tell application \"Terminal\" to activate"])
+        .args(["-e", &format!("tell application \"Terminal\" to do script \"{LOGIN_CMD}\""), "-e", "tell application \"Terminal\" to activate"])
         .status()
         .map_err(|e| e.to_string())
         .and_then(|s| if s.success() { Ok(()) } else { Err(crate::i18n::tr("터미널을 열지 못했습니다", "Could not open a terminal").into()) })
@@ -258,10 +278,10 @@ mod tests {
     fn deps_missing_lists_only_absent() {
         let all = |_: &str, _: &[&str]| true;
         let no_tmux = |p: &str, _: &[&str]| p != "tmux";
-        assert_eq!(missing(all, true, false), vec![]);
-        assert_eq!(missing(no_tmux, false, false), vec![Need::Tmux, Need::Forge]);
+        assert_eq!(missing(all, true, false, false), vec![]);
+        assert_eq!(missing(no_tmux, false, false, false), vec![Need::Tmux, Need::Forge]);
         // macOS 내장 tmux가 있으면 tmux는 준비물이 아니다
-        assert_eq!(missing(no_tmux, false, true), vec![Need::Forge]);
+        assert_eq!(missing(no_tmux, false, true, false), vec![Need::Forge]);
     }
 
     #[test]
@@ -301,5 +321,42 @@ mod tests {
 
         let ok = install_with(&[Need::Claude, Need::Forge], false, |_| Ok(()));
         assert!(ok.iter().all(|s| s.outcome == Outcome::Ok && s.detail.is_none()));
+    }
+
+    /// 깨끗한 맥에는 git이 없어 forge 마켓플레이스를 못 받는다(v0.1.2 VM 실측) — forge가 빠졌을 때만 개발자 도구를 준비물로
+    #[test]
+    fn deps_devtools_needed_only_for_forge_on_mac() {
+        let no_devtools = |p: &str, _: &[&str]| p != "xcode-select";
+        assert_eq!(missing(no_devtools, false, true, true), vec![Need::DevTools, Need::Forge]);
+        assert_eq!(missing(no_devtools, true, true, true), vec![], "forge가 있으면 git은 필요 없다");
+        assert_eq!(missing(no_devtools, false, false, false), vec![Need::Forge], "macOS가 아니면 묻지 않는다");
+    }
+
+    /// 개발자 도구는 macOS 설치 창을 띄울 뿐이라 '시작됨', forge는 개발자 도구가 끝나기 전엔 건너뛴다
+    #[test]
+    fn deps_devtools_starts_installer_and_forge_waits() {
+        assert_eq!(step_cmd(Need::DevTools, false).unwrap(), "xcode-select --install");
+        let r = install_with(&[Need::DevTools, Need::Claude, Need::Forge], false, |_| Ok(()));
+        assert_eq!(r.iter().map(|s| (s.need, s.outcome)).collect::<Vec<_>>(), vec![
+            (Need::DevTools, Outcome::Started),
+            (Need::Claude, Outcome::Ok),
+            (Need::Forge, Outcome::Skipped),
+        ]);
+        assert!(r[0].detail.as_deref().unwrap().contains("다시 확인"));
+        assert!(r[2].detail.as_deref().unwrap().contains("개발자 도구"));
+    }
+
+    /// 마켓플레이스 등록 실패를 숨기지 않는다(이미 등록돼 있으면 통과)
+    #[test]
+    fn deps_forge_marketplace_failure_is_not_swallowed() {
+        let forge = step_cmd(Need::Forge, false).unwrap();
+        assert!(!forge.contains("|| true"), "{forge}");
+        assert!(forge.contains("marketplace list"), "{forge}");
+    }
+
+    /// 공식 설치본(~/.local/bin)은 새 셸 PATH에 없다 — 로그인 터미널이 그 경로를 넣고 claude를 부른다
+    #[test]
+    fn deps_login_command_finds_local_bin_claude() {
+        assert!(LOGIN_CMD.contains("$HOME/.local/bin") && LOGIN_CMD.ends_with("claude"), "{LOGIN_CMD}");
     }
 }

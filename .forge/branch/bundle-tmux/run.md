@@ -23,3 +23,17 @@
 - cargo가 PATH에 없음(~/.cargo/bin 프록시 부재) — rustup 툴체인 bin을 PATH 앞에 붙여 사용.
 - tmux 빌드: pkg-config 없이 LIBEVENT_CFLAGS/LIBS 환경변수로 libevent_core.a 정적 링크, `--disable-utf8proc`, MACOSX_DEPLOYMENT_TARGET=11.0.
 - 로컬 `tauri build`는 업데이터 서명 키가 없어 마지막에 오류로 끝나지만 .app은 생성됨(CI는 키가 있음).
+
+## 수리 r1 (VM UAT 실패 → v0.1.3)
+v0.1.2 가상머신 UAT: 문제 1·2·3(항목별 결과)·5 통과. 실패 2건 —
+forge 마켓플레이스 등록이 git 부재로 실패(`|| true`가 숨겨 "not found in marketplace"만 보임),
+[로그인] 터미널 `claude: command not found`(공식 설치 위치 ~/.local/bin이 새 셸 PATH 밖).
+사람 결정: 개발자 도구를 준비물로.
+
+- R1 `Need::DevTools` — forge가 빠진 macOS에서 `xcode-select -p`로 확인(설치 창이 뜨지 않는 질의), [설치]는 `xcode-select --install` → `Outcome::Started` — ✅
+- R2 forge는 개발자 도구가 끝나기 전엔 건너뜀(안내: 마친 뒤 [다시 확인] → [설치]) — ✅
+- R3 마켓플레이스: `list | grep -qw forge || add` (이미 있으면 통과, 실패는 노출) — ✅
+- R4 [로그인]: `export PATH="$HOME/.local/bin:$PATH"; claude` — ✅
+- R5 화면: 「…설치 중」 결과 표시, 버전 0.1.3·README·릴리스 노트 — ✅
+
+검사: cargo test 55 → 59, npm run check 0 ERRORS, check-release 13/13. tmux·jq 바이너리 무변경(C4·C5 이전 측정 유지).
