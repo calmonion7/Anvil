@@ -1,10 +1,10 @@
 # LOOP — macOS tmux·jq 내장 + 첫 설치 문제 5개 해결 (v0.1.2 준비)
 started: 2026-10-24
-replan-round: 0
+replan-round: 1
 replan-cap: 3
 budget-tokens: none
 budget-spent: 0 · since: 2026-10-24T00:00:00Z
-wall: unverifiable-uat (#8 DoD 6 — 가상머신 첫 설치 확인은 사람 몫)
+wall: none
 
 ## Stop-condition checks (ALL must pass)
 - [x] C1. (PATH 앞에 /Users/calmonion/.rustup/toolchains/stable-aarch64-apple-darwin/bin — ~/.cargo/bin 프록시 부재) `cd src-tauri && cargo test` → 실패 0, 통과 테스트 수 > 54
@@ -21,6 +21,10 @@ wall: unverifiable-uat (#8 DoD 6 — 가상머신 첫 설치 확인은 사람 �
 - C4: pass ×0 · regressed: ×0 · last-evidence: "번들 bin: lipo x86_64 arm64 ×2, tmux 3.6a, jq-1.8.1"
 - C5: pass ×0 · regressed: ×0 · last-evidence: "otool -L 비시스템 참조 0줄, -S 임시 소켓 new -d → kill-server SERVER_OK"
 - C6: pass ×0 · regressed: ×0 · last-evidence: "다섯 파일 0.1.2, docs/releases/v0.1.2.md 존재"
+
+## UAT 수리 기록
+- bundle-tmux-first-run-repair-r1 (2026-10-24): VM UAT failed — forge 설치가 git 부재로 실패, [로그인] claude not found.
+  사람 결정: 개발자 도구(xcode-select)를 준비물로. 수리 범위 = deps 준비물·설치·로그인 + v0.1.3. (replan-round 1/3)
 
 ## Authorized replan scope
 - 위 검사 실패에 직접 연결되는 fix-forward 작업만

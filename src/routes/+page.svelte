@@ -89,7 +89,7 @@
   let updateError = $state("");
   // 준비물(tmux · claude CLI · forge) — 빠졌으면 띠, macOS는 [설치]
   type DepsStatus = { needs: string[]; message: string | null; installable: boolean };
-  type DepsStep = { need: string; label: string; outcome: "ok" | "failed" | "skipped"; detail: string | null };
+  type DepsStep = { need: string; label: string; outcome: "ok" | "failed" | "skipped" | "started"; detail: string | null };
   let deps = $state<DepsStatus | null>(null);
   let depsInstalling = $state(false);
   let depsError = $state("");
@@ -506,9 +506,9 @@
           <ul class="steps">
             {#each depsSteps as st (st.need)}
               <li>
-                <span class={st.outcome === "ok" ? "ok" : st.outcome === "failed" ? "crit" : "t3"}>{st.outcome === "ok" ? "✓" : st.outcome === "failed" ? "✕" : "–"}</span>
+                <span class={st.outcome === "ok" ? "ok" : st.outcome === "failed" ? "crit" : "t3"}>{st.outcome === "ok" ? "✓" : st.outcome === "failed" ? "✕" : st.outcome === "started" ? "…" : "–"}</span>
                 <span class="b">{st.label}</span>
-                <span class="ink2">{st.outcome === "ok" ? t("설치됨", "Installed") : st.outcome === "failed" ? t("실패", "Failed") : t("건너뜀", "Skipped")}{#if st.detail} — {#each linkParts(st.detail) as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
+                <span class="ink2">{st.outcome === "ok" ? t("설치됨", "Installed") : st.outcome === "failed" ? t("실패", "Failed") : st.outcome === "started" ? t("설치 중", "Installing") : t("건너뜀", "Skipped")}{#if st.detail} — {#each linkParts(st.detail) as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
               </li>
             {/each}
           </ul>

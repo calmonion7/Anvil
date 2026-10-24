@@ -2,6 +2,7 @@
 <!-- task: 8 -->
 <!-- priority: high -->
 <!-- tdd: on -->
+<!-- repaired-by: fg-loop -->
 # macOS에 tmux·jq 내장 + 첫 설치 테스트에서 나온 문제 5개 해결 (v0.1.2)
 
 ## 목표 / 하지 않을 것
