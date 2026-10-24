@@ -439,7 +439,10 @@ pub fn run() {
         // macOS 기본 메뉴의 앱 메뉴에 "업데이트 설치…"를 끼워 넣는다 — 로컬 폴링 설치본만(배포판은 업데이터 띠).
         .menu(|app| {
             let menu = tauri::menu::Menu::default(app)?;
-            let local_install = app.path().resource_dir().map(|d| !updater::should_check(&d)).unwrap_or(false);
+            // menu 콜백은 Env 가 manage 되기 전에 돈다 — app.path().resource_dir() 는 여기서 패닉한다(배포판 실행 즉시 종료).
+            let local_install = tauri::utils::platform::resource_dir(app.package_info(), &tauri::Env::default())
+                .map(|d| !updater::should_check(&d))
+                .unwrap_or(false);
             if !local_install {
                 return Ok(menu);
             }
