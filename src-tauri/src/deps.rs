@@ -1,6 +1,7 @@
 //! 준비물(tmux · claude CLI · forge 플러그인) 확인과 설치. 설치는 사용자가 [설치]를 누를 때만, macOS만.
+//! macOS는 tmux·jq가 앱에 내장돼 준비물이 claude CLI·forge뿐이다.
 
-use crate::session::{backend_missing, login_path};
+use crate::session::{backend_missing, bundled_bin, login_path};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
@@ -42,10 +43,11 @@ pub fn forge_installed(home: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// macOS에서 빠진 준비물. `probe(프로그램, 인자)`가 실행 성공 여부를 알려준다.
-pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool) -> Vec<Need> {
+/// 빠진 준비물. `probe(프로그램, 인자)`가 실행 성공 여부를 알려준다.
+/// `bundled_tmux`: macOS 앱에 tmux가 내장돼 있으면 tmux는 준비물이 아니다(ADR 261024-202909).
+pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool, bundled_tmux: bool) -> Vec<Need> {
     let mut v = Vec::new();
-    if !probe("tmux", &["-V"]) {
+    if !bundled_tmux && !probe("tmux", &["-V"]) {
         v.push(Need::Tmux);
     }
     if !probe("claude", &["--version"]) {
@@ -57,27 +59,53 @@ pub fn missing(probe: impl Fn(&str, &[&str]) -> bool, forge: bool) -> Vec<Need> 
     v
 }
 
-/// 빠진 것만 차례로 설치하는 bash 스크립트. tmux는 Homebrew로만 설치한다.
-/// jq는 선택(없어도 동작, 모델 표시만 빠짐) — 띠는 띄우지 않고, brew가 있으면 같이 깔되 실패해도 넘어간다.
-pub fn install_script(needs: &[Need], has_brew: bool, has_jq: bool) -> Result<String, String> {
-    let mut lines = vec!["set -e".to_string()];
-    if has_brew && !has_jq {
-        lines.push("brew install jq || true".into());
-    }
-    for n in needs {
-        match n {
-            Need::Tmux if !has_brew => {
-                return Err(crate::i18n::tr("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh 에서 설치한 뒤 다시 누르세요", "Installing tmux requires Homebrew — install it from https://brew.sh and try again").into())
-            }
-            Need::Tmux => lines.push("brew install tmux".into()),
-            Need::Claude => lines.push("curl -fsSL https://claude.ai/install.sh | bash".into()),
-            Need::Forge => {
-                lines.push(format!("claude plugin marketplace add {FORGE_MARKETPLACE} || true"));
-                lines.push(format!("claude plugin install {FORGE_PLUGIN}"));
-            }
+#[derive(Serialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Ok,
+    Failed,
+    Skipped,
+}
+
+/// 설치 결과 한 항목 — 띠에 항목별로 보여 준다.
+#[derive(Serialize, Debug)]
+pub struct Step {
+    pub need: Need,
+    pub label: &'static str,
+    pub outcome: Outcome,
+    /// 실패 · 건너뜀 이유
+    pub detail: Option<String>,
+}
+
+/// 준비물 하나를 설치하는 bash 명령. tmux는 Homebrew로만 설치한다(macOS는 내장이라 보통 오지 않는다).
+pub fn step_cmd(need: Need, has_brew: bool) -> Result<String, String> {
+    Ok(match need {
+        Need::Tmux if !has_brew => {
+            return Err(crate::i18n::tr("tmux 설치에 Homebrew가 필요합니다 — https://brew.sh", "Installing tmux requires Homebrew — https://brew.sh").into())
         }
+        Need::Tmux => "brew install tmux".into(),
+        Need::Claude => "curl -fsSL https://claude.ai/install.sh | bash".into(),
+        Need::Forge => format!("claude plugin marketplace add {FORGE_MARKETPLACE} || true\nclaude plugin install {FORGE_PLUGIN}"),
+    })
+}
+
+/// 항목별로 이어서 설치한다 — 하나가 실패해도 나머지를 계속하고, claude가 실패하면 forge는 건너뛴다.
+pub fn install_with(needs: &[Need], has_brew: bool, mut run: impl FnMut(&str) -> Result<(), String>) -> Vec<Step> {
+    let mut steps: Vec<Step> = Vec::new();
+    for &need in needs {
+        let claude_failed = steps.iter().any(|s| s.need == Need::Claude && s.outcome != Outcome::Ok);
+        let result = if need == Need::Forge && claude_failed {
+            Err((Outcome::Skipped, crate::i18n::tr("claude CLI가 먼저 필요합니다", "claude CLI is required first").to_string()))
+        } else {
+            step_cmd(need, has_brew).and_then(|c| run(&c)).map_err(|e| (Outcome::Failed, e))
+        };
+        let (outcome, detail) = match result {
+            Ok(()) => (Outcome::Ok, None),
+            Err((o, e)) => (o, Some(e)),
+        };
+        steps.push(Step { need, label: need.label(), outcome, detail });
     }
-    Ok(lines.join("\n"))
+    steps
 }
 
 fn probe(prog: &str, args: &[&str]) -> bool {
@@ -107,27 +135,23 @@ pub fn status() -> DepsStatus {
         });
         return DepsStatus { needs: vec![], message, installable: false };
     }
-    let needs = missing(probe, forge_installed(&home()));
+    let needs = missing(probe, forge_installed(&home()), bundled_bin().is_some());
     let message = (!needs.is_empty())
         .then(|| format!("{}{}", crate::i18n::tr("필요: ", "Required: "), needs.iter().map(|n| n.label()).collect::<Vec<_>>().join(" · ")));
     DepsStatus { installable: cfg!(target_os = "macos") && !needs.is_empty(), needs, message }
 }
 
-/// 빠진 것을 설치한다. 실패하면 출력 끝부분을 돌려준다.
-pub fn install() -> Result<(), String> {
+/// 빠진 것을 항목별로 설치하고 결과를 돌려준다. 실패한 항목에는 출력의 마지막 줄을 붙인다.
+pub fn install() -> Vec<Step> {
     let needs = status().needs;
-    let script = install_script(&needs, probe("brew", &["--version"]), probe("jq", &["--version"]))?;
-    let out = Command::new("/bin/bash")
-        .args(["-c", &script])
-        .env("PATH", login_path())
-        .output()
-        .map_err(|e| e.to_string())?;
-    if out.status.success() {
-        return Ok(());
-    }
-    let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    let tail: Vec<&str> = log.lines().rev().take(3).collect();
-    Err(tail.into_iter().rev().collect::<Vec<_>>().join(" / "))
+    install_with(&needs, probe("brew", &["--version"]), |cmd| {
+        let out = Command::new("/bin/bash").args(["-c", cmd]).env("PATH", login_path()).output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            return Ok(());
+        }
+        let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        Err(log.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string())
+    })
 }
 
 /// 터미널 앱에서 claude를 열어 로그인하게 한다.
@@ -234,8 +258,10 @@ mod tests {
     fn deps_missing_lists_only_absent() {
         let all = |_: &str, _: &[&str]| true;
         let no_tmux = |p: &str, _: &[&str]| p != "tmux";
-        assert_eq!(missing(all, true), vec![]);
-        assert_eq!(missing(no_tmux, false), vec![Need::Tmux, Need::Forge]);
+        assert_eq!(missing(all, true, false), vec![]);
+        assert_eq!(missing(no_tmux, false, false), vec![Need::Tmux, Need::Forge]);
+        // macOS 내장 tmux가 있으면 tmux는 준비물이 아니다
+        assert_eq!(missing(no_tmux, false, true), vec![Need::Forge]);
     }
 
     #[test]
@@ -248,25 +274,32 @@ mod tests {
     }
 
     #[test]
-    fn deps_install_script_in_order() {
-        let s = install_script(&[Need::Tmux, Need::Claude, Need::Forge], true, true).unwrap();
-        let tmux = s.find("brew install tmux").unwrap();
-        let claude = s.find("claude.ai/install.sh").unwrap();
-        let forge = s.find("plugin install forge@forge").unwrap();
-        assert!(s.starts_with("set -e") && tmux < claude && claude < forge);
-        assert!(s.contains("marketplace add gyuha/forge"));
+    fn deps_install_steps_in_order() {
+        assert!(step_cmd(Need::Claude, false).unwrap().contains("claude.ai/install.sh"));
+        let forge = step_cmd(Need::Forge, false).unwrap();
+        assert!(forge.contains("marketplace add gyuha/forge") && forge.contains("plugin install forge@forge"));
+        assert_eq!(step_cmd(Need::Tmux, true).unwrap(), "brew install tmux");
+        assert!(step_cmd(Need::Tmux, false).unwrap_err().contains("brew.sh"));
     }
 
+    /// 하나가 실패해도 나머지를 이어 가고, claude가 실패하면 forge는 건너뛴다 — 결과는 항목별로
     #[test]
-    fn deps_install_script_needs_brew_for_tmux() {
-        assert!(install_script(&[Need::Tmux], false, false).unwrap_err().contains("brew.sh"));
-        assert!(!install_script(&[Need::Claude], false, false).unwrap().contains("brew"));
-    }
+    fn deps_install_continues_and_skips_forge_without_claude() {
+        let mut ran = Vec::new();
+        let r = install_with(&[Need::Tmux, Need::Claude, Need::Forge], false, |c| {
+            ran.push(c.to_string());
+            if c.contains("install.sh") { Err("네트워크 오류".into()) } else { Ok(()) }
+        });
+        assert_eq!(r.iter().map(|s| (s.need, s.outcome)).collect::<Vec<_>>(), vec![
+            (Need::Tmux, Outcome::Failed),
+            (Need::Claude, Outcome::Failed),
+            (Need::Forge, Outcome::Skipped),
+        ]);
+        assert!(r[0].detail.as_deref().unwrap().contains("brew.sh"));
+        assert_eq!(r[1].detail.as_deref(), Some("네트워크 오류"));
+        assert_eq!(ran.len(), 1, "tmux(brew 없음)와 forge(claude 실패)는 실행하지 않는다");
 
-    #[test]
-    fn deps_install_script_adds_optional_jq() {
-        assert!(install_script(&[Need::Claude], true, false).unwrap().contains("brew install jq || true"));
-        assert!(!install_script(&[Need::Claude], true, true).unwrap().contains("jq"));
-        assert!(!install_script(&[Need::Claude], false, false).unwrap().contains("jq"));
+        let ok = install_with(&[Need::Claude, Need::Forge], false, |_| Ok(()));
+        assert!(ok.iter().all(|s| s.outcome == Outcome::Ok && s.detail.is_none()));
     }
 }

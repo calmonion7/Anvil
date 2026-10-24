@@ -34,3 +34,8 @@ export function inlineCode(text: string): string {
 
 /** STATUS 값의 첫 낱말을 정규화한다(forge-status의 norm과 같다). */
 export const norm = (v: string | null) => (v ?? "").toLowerCase().match(/^[a-z/]*/)![0];
+
+/** 글을 URL과 나머지로 나눈다 — 띠 문구 속 URL을 눌러 브라우저로 열 수 있게. */
+export function linkParts(text: string): { text: string; url: boolean }[] {
+  return text.split(/(https?:\/\/[^\s`'")]+)/).filter(Boolean).map((part) => ({ text: part, url: /^https?:\/\//.test(part) }));
+}

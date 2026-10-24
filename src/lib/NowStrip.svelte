@@ -10,11 +10,14 @@
     onOpen,
     tools,
     onStart,
+    blocked = null,
   }: {
     snap: Snapshot;
     onOpen: (rel: string, label: string) => void;
     /** forge가 없을 때 — 계획 세션에 첫 계획 명령을 채운다 */
     onStart?: () => void;
+    /** 준비물이 빠졌으면 이유 — 시작 버튼을 끈다 */
+    blocked?: string | null;
     /** 둘째 줄 오른쪽 — 실행 세션 단축 버튼 */
     tools?: Snippet;
   } = $props();
@@ -51,7 +54,7 @@
     <span class="b kicker">{!active && next ? t("다음", "Next") : t("지금", "Now")}</span>
     {#if !snap.hasForge}
       <span class="ink2 tt">{t("forge 없음 — 이 프로젝트에는 아직 .forge/ 가 없습니다. 계획 세션에서 ", "No forge — this project has no .forge/ yet. Create a first plan with ")}<code>/forge:fg-ask</code>{t(" 로 첫 계획을 만들면 보드가 채워집니다.", " in the plan session to fill the board.")}</span>
-      {#if onStart}<button class="btn sm" onclick={onStart}>{t("계획 세션에서 시작", "Start in plan session")}</button>{/if}
+      {#if onStart}<button class="btn sm" disabled={!!blocked} title={blocked ?? undefined} onclick={onStart}>{t("계획 세션에서 시작", "Start in plan session")}</button>{#if blocked}<span class="t3">{blocked}</span>{/if}{/if}
     {:else if active}
       <span class="tt" title={active.title}><span class="num">{num(active.task)}</span>{splitTitle(active.title)[0]}</span>
       {#each active.docs as d (d.path)}

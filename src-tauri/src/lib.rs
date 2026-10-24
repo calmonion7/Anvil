@@ -365,10 +365,10 @@ async fn deps_status() -> deps::DepsStatus {
     })
 }
 
-/// 빠진 준비물 설치(사용자가 [설치]를 눌렀을 때만)
+/// 빠진 준비물을 항목별로 설치(사용자가 [설치]를 눌렀을 때만) — 항목별 결과
 #[tauri::command]
-async fn deps_install() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(deps::install).await.map_err(|e| e.to_string())?
+async fn deps_install() -> Result<Vec<deps::Step>, String> {
+    tauri::async_runtime::spawn_blocking(deps::install).await.map_err(|e| e.to_string())
 }
 
 /// forge 플러그인 새 버전 · 호환 여부(마켓플레이스를 새로 받는다)
@@ -487,6 +487,9 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+            if let Ok(dir) = app.path().resource_dir() {
+                session::set_bundled_bin(dir.join("bin"));
+            }
             let files = files(&handle);
             files.install()?;
             // 훅은 이 pid가 살아 있으면 알림을 앱에 맡긴다.

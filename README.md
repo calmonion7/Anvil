@@ -8,14 +8,15 @@ forge(Claude Code 플러그인)로 진행하는 프로젝트들의 진행 상황
 
 ## 준비물
 
-Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 상단에 안내 띠가 뜨고, macOS에서는 띠의 **[설치]** 로 빠진 것만 한 번에 설치한다(tmux는 Homebrew가 있어야 한다). claude CLI를 새로 설치했으면 이어서 뜨는 **[로그인]** 으로 터미널에서 한 번 로그인한다.
+Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 맨 위에 안내 띠가 뜨고(프로젝트를 아직 등록하지 않았어도), 그동안 세션을 여는 버튼은 꺼진다. macOS에서는 띠의 **[설치]** 한 번으로 빠진 것을 항목별로 설치하고 결과를 항목마다 보여 준다 — Homebrew도 관리자 비밀번호도 필요 없다. claude CLI를 새로 설치했으면 이어서 뜨는 **[로그인]** 으로 터미널에서 한 번 로그인한다. 직접 설치했다면 띠의 **[다시 확인]** 을 누른다.
+
+macOS 앱에는 **tmux 3.6a와 jq 1.8.1이 들어 있어** 따로 설치하지 않는다(시스템에 tmux가 있어도 앱에 든 것을 쓴다). Windows(WSL)·Linux는 아래처럼 tmux를 직접 설치한다.
 
 | 필요 | 용도 | 설치 (macOS) |
 |---|---|---|
-| **tmux** | 세션 유지 | `brew install tmux` |
 | **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | `curl -fsSL https://claude.ai/install.sh \| bash` 후 터미널에서 `claude` 한 번 실행해 로그인 |
 | **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
-| jq (선택) | 세션별 모델 · effort 표시 | `brew install jq` ([설치] 때 Homebrew가 있으면 같이 깐다) |
+| tmux · jq | 세션 유지 · 세션별 모델 표시 | 앱에 내장(Windows·Linux는 직접 설치) |
 
 forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
