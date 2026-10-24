@@ -11,7 +11,7 @@
   import { onMount } from "svelte";
 
   /** 살아 있는 tmux 세션 이름 — 이 컴포넌트는 pty 안에서 그 세션에 붙기만 한다. */
-  /** focusTick이 바뀔 때마다 이 터미널에 초점을 준다(보드 버튼이 명령을 채운 뒤). */
+  /** focusTick이 바뀔 때마다 이 터미널에 초점을 준다(보드 버튼이 명령을 채운 뒤 · [세션 열기] 뒤). */
   let { name, focusTick = 0 }: { name: string; focusTick?: number } = $props();
 
   let host: HTMLDivElement;

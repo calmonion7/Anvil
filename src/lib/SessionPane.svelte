@@ -17,6 +17,7 @@
     live = null,
     focusTick = 0,
     blocked = null,
+    onstarted,
   }: {
     project: string;
     projectName: string;
@@ -31,6 +32,8 @@
     focusTick?: number;
     /** 준비물이 빠졌으면 이유 — 세션 열기를 끈다 */
     blocked?: string | null;
+    /** 세션을 연 뒤 — 터미널이 뜨면 바로 초점이 가게 한다 */
+    onstarted?: () => void;
   } = $props();
 
   let busy = $state(false);
@@ -50,6 +53,7 @@
     error = "";
     try {
       await invoke("session_start", { project, role });
+      onstarted?.();
     } catch (e) {
       error = String(e);
     } finally {
