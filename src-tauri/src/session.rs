@@ -39,6 +39,35 @@ pub fn login_path() -> &'static str {
     })
 }
 
+static BUNDLED_BIN: OnceLock<PathBuf> = OnceLock::new();
+
+/// macOS 앱에 내장된 tmux·jq 폴더(ADR 261024-202909). 앱 시작 때 리소스의 `bin/`에 tmux가 있으면 등록한다.
+pub fn set_bundled_bin(dir: PathBuf) {
+    if cfg!(target_os = "macos") && dir.join("tmux").is_file() {
+        let _ = BUNDLED_BIN.set(dir);
+    }
+}
+
+pub fn bundled_bin() -> Option<&'static Path> {
+    BUNDLED_BIN.get().map(PathBuf::as_path)
+}
+
+fn tmux_prog(bundled: Option<&Path>) -> String {
+    bundled.map(|b| b.join("tmux").to_string_lossy().into_owned()).unwrap_or_else(|| "tmux".into())
+}
+
+fn path_with(bundled: Option<&Path>, base: &str) -> String {
+    match bundled {
+        Some(b) => format!("{}:{base}", b.display()),
+        None => base.to_string(),
+    }
+}
+
+/// tmux·claude·세션에 넘기는 PATH — 내장 폴더가 있으면 맨 앞(상태줄 스크립트의 jq도 내장본을 쓴다).
+pub fn run_path() -> String {
+    path_with(bundled_bin(), login_path())
+}
+
 /// `.claude`(플러그인 · 슬래시 명령)가 있는 홈. 윈도우는 claude가 WSL 안에 있으므로 WSL 홈(`\\wsl.localhost\<배포판>\home\<사용자>`).
 pub fn claude_home() -> PathBuf {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -64,7 +93,7 @@ pub fn claude_command(args: &[&str]) -> Command {
         c
     } else {
         let mut c = Command::new("claude");
-        c.args(args).env("PATH", login_path());
+        c.args(args).env("PATH", run_path());
         c
     }
 }
@@ -91,11 +120,11 @@ fn script_cmd(p: &Path, windows: bool) -> String {
 }
 
 /// tmux를 부르는 유일한 경로: (프로그램, 공통 인자). 윈도우에선 `wsl.exe -- tmux …`.
-fn tmux_argv(conf: &Path) -> (&'static str, Vec<String>) {
+fn tmux_argv(conf: &Path) -> (String, Vec<String>) {
     #[cfg(windows)]
-    let (prog, mut args) = ("wsl.exe", vec!["--".to_string(), "tmux".to_string()]);
+    let (prog, mut args) = ("wsl.exe".to_string(), vec!["--".to_string(), "tmux".to_string()]);
     #[cfg(not(windows))]
-    let (prog, mut args) = ("tmux", Vec::<String>::new());
+    let (prog, mut args) = (tmux_prog(bundled_bin()), Vec::<String>::new());
     args.extend(["-u", "-L", SOCKET, "-f"].map(String::from));
     args.push(tmux_path(conf));
     (prog, args)
@@ -104,7 +133,7 @@ fn tmux_argv(conf: &Path) -> (&'static str, Vec<String>) {
 fn tmux(conf: &Path) -> Command {
     let (prog, args) = tmux_argv(conf);
     let mut c = Command::new(prog);
-    c.args(args).env("PATH", login_path()).env("LANG", lang());
+    c.args(args).env("PATH", run_path()).env("LANG", lang());
     c
 }
 
@@ -381,7 +410,7 @@ fn session_cmd(title: &str, model: &str, hooks: &Path, windows: bool) -> String 
 fn session_env(name: &str, title: &str, windows: bool) -> Vec<String> {
     let mut v = vec![format!("ANVIL_SESSION={name}")];
     if !windows {
-        v.push(format!("PATH={}", login_path()));
+        v.push(format!("PATH={}", run_path()));
     }
     v.push(format!("LANG={}", lang()));
     // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 이 이름을 다시 붙인다.
@@ -544,7 +573,7 @@ impl Terms {
         let mut cmd = CommandBuilder::new(prog);
         cmd.args(args);
         cmd.args(["attach-session", "-t", name]);
-        cmd.env("PATH", login_path());
+        cmd.env("PATH", run_path());
         cmd.env("LANG", lang());
         cmd.env("TERM", "xterm-256color");
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
@@ -792,6 +821,16 @@ mod tests {
         assert_eq!(run("s-run", old), (true, String::new()));
         assert_eq!(rec("s-run").trim(), r#"{"model":"Sonnet 5.5","effort":"low"}"#);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// macOS 내장 tmux·jq(ADR 261024-202909): 내장 폴더가 있으면 tmux는 그 경로, PATH 맨 앞에 그 폴더(상태줄의 jq도 내장본)
+    #[test]
+    fn bundled_bin_picks_tmux_and_leads_path() {
+        let bin = Path::new("/Applications/Anvil.app/Contents/Resources/bin");
+        assert_eq!(tmux_prog(Some(bin)), "/Applications/Anvil.app/Contents/Resources/bin/tmux");
+        assert_eq!(tmux_prog(None), "tmux");
+        assert_eq!(path_with(Some(bin), "/usr/bin:/bin"), "/Applications/Anvil.app/Contents/Resources/bin:/usr/bin:/bin");
+        assert_eq!(path_with(None, "/usr/bin:/bin"), "/usr/bin:/bin");
     }
 
     #[test]

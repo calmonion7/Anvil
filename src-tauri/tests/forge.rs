@@ -75,6 +75,16 @@ fn root_not_git_falls_back() {
     assert_eq!(root_of(p.path()), ".forge");
 }
 
+/// git이 아닌 폴더: 브랜치 칩·"기본 .forge/" 배지를 띄울 이유가 없다(첫 설치 문제 2)
+#[test]
+fn root_not_git_has_no_branch_badge() {
+    let p = temp_project(None, None);
+    let root = forge::resolve_root(p.path(), &Head::NotGit);
+    assert!(!root.git && root.warning.is_none() && root.branch.is_none());
+    assert!(forge::resolve_root(p.path(), &Head::Detached).git);
+    assert!(forge::resolve_root(p.path(), &Head::Branch("main".into())).git);
+}
+
 #[test]
 fn root_worktree_git_file_is_followed() {
     let p = temp_project(None, None);

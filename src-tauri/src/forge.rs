@@ -40,6 +40,8 @@ pub fn read_head(project: &Path) -> Head {
 #[serde(rename_all = "camelCase")]
 pub struct RootInfo {
     pub branch: Option<String>,
+    /// git 저장소인가 — 아니면 화면이 브랜치 칩·배지를 숨긴다
+    pub git: bool,
     /// `.forge` 또는 `.forge/branch/<branch>`
     pub rel: String,
     pub warning: Option<String>,
@@ -56,10 +58,12 @@ pub fn default_branch(project: &Path) -> String {
 
 pub fn resolve_root(project: &Path, head: &Head) -> RootInfo {
     match head {
-        Head::Branch(b) if *b == default_branch(project) => RootInfo { branch: Some(b.clone()), rel: ".forge".into(), warning: None },
-        Head::Branch(b) => RootInfo { branch: Some(b.clone()), rel: format!(".forge/branch/{b}"), warning: None },
-        _ => RootInfo {
+        Head::Branch(b) if *b == default_branch(project) => RootInfo { branch: Some(b.clone()), git: true, rel: ".forge".into(), warning: None },
+        Head::Branch(b) => RootInfo { branch: Some(b.clone()), git: true, rel: format!(".forge/branch/{b}"), warning: None },
+        Head::NotGit => RootInfo { branch: None, git: false, rel: ".forge".into(), warning: None },
+        Head::Detached => RootInfo {
             branch: None,
+            git: true,
             rel: ".forge".into(),
             warning: Some(crate::i18n::tr("이름 있는 브랜치가 아니라 기본 .forge/ 를 읽습니다", "Not on a named branch; reading the default .forge/").into()),
         },

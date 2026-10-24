@@ -16,6 +16,7 @@
     title,
     live = null,
     focusTick = 0,
+    blocked = null,
   }: {
     project: string;
     projectName: string;
@@ -28,6 +29,8 @@
     /** 상태줄 래퍼가 남긴 실제 모델·effort — 상태줄이 처음 그려지기 전에는 없다 */
     live?: ModelInfo | null;
     focusTick?: number;
+    /** 준비물이 빠졌으면 이유 — 세션 열기를 끈다 */
+    blocked?: string | null;
   } = $props();
 
   let busy = $state(false);
@@ -87,7 +90,8 @@
     <div class="empty">
       <div>{t(`${roleLabel[role]} 세션이 없습니다.`, `No ${roleLabel[role]} session.`)}</div>
       <div class="t3">{role === "plan" ? t("계획을 쌓는(fg-ask) 자리입니다.", "Where plans are built (fg-ask).") : t("계획을 실행하는(fg-run·fg-next) 자리입니다.", "Where plans are run (fg-run · fg-next).")}</div>
-      <button class="btn sm" disabled={busy} onclick={start}>{busy ? t("여는 중…", "Opening…") : t("세션 열기", "Open session")}</button>
+      <button class="btn sm" disabled={busy || !!blocked} onclick={start}>{busy ? t("여는 중…", "Opening…") : t("세션 열기", "Open session")}</button>
+      {#if blocked}<div class="t3">{blocked}</div>{/if}
       {#if error}<div class="err">{error}</div>{/if}
     </div>
   {/if}

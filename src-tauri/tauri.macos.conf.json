@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/bin/tmux": "bin/tmux",
+      "resources/bin/jq": "bin/jq"
+    }
+  }
+}

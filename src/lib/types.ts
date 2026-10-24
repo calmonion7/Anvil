@@ -37,7 +37,7 @@ export interface FileError { path: string; message: string }
 
 export interface Snapshot {
   name: string; path: string; hasForge: boolean;
-  root: { branch: string | null; rel: string; warning: string | null };
+  root: { branch: string | null; git: boolean; rel: string; warning: string | null };
   headline: string;
   active: ActiveTask | null; loopState: LoopState | null;
   backlog: PlanCard[]; executed: TaskCard[]; done: TaskCard[]; doneTotal: number;

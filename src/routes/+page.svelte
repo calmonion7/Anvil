@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { linkParts } from "$lib/format";
   import { marked } from "marked";
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
@@ -87,9 +89,14 @@
   let updateError = $state("");
   // 준비물(tmux · claude CLI · forge) — 빠졌으면 띠, macOS는 [설치]
   type DepsStatus = { needs: string[]; message: string | null; installable: boolean };
+  type DepsStep = { need: string; label: string; outcome: "ok" | "failed" | "skipped"; detail: string | null };
   let deps = $state<DepsStatus | null>(null);
   let depsInstalling = $state(false);
   let depsError = $state("");
+  /** 직전 [설치]의 항목별 결과 */
+  let depsSteps = $state<DepsStep[]>([]);
+  /** 준비물이 빠진 동안 세션을 여는 버튼은 끈다 */
+  let depsBlocked = $derived(deps?.message ? t("먼저 위 띠에서 준비물을 설치하세요", "Install the prerequisites in the band above first") : null);
   let needLogin = $state(false);
   const checkDeps = () =>
     invoke<DepsStatus>("deps_status")
@@ -98,10 +105,9 @@
   async function installDeps() {
     depsInstalling = true;
     depsError = "";
-    const hadClaude = !deps?.needs.includes("claude");
     try {
-      await invoke("deps_install");
-      if (!hadClaude) needLogin = true;
+      depsSteps = await invoke<DepsStep[]>("deps_install");
+      if (depsSteps.some((s) => s.need === "claude" && s.outcome === "ok")) needLogin = true;
     } catch (e) {
       depsError = String(e);
     }
@@ -484,6 +490,38 @@
   </aside>
 
   <section class="main" bind:this={mainEl}>
+    <!-- 준비물 띠 — 프로젝트가 없어도 앱 맨 위에(첫 설치 문제 1) -->
+    {#if deps?.message || depsSteps.some((s) => s.outcome !== "ok")}
+      <div class="band top">
+        <span class="b"><span class="crit">✕</span> {deps?.message ? t("준비물이 빠졌습니다", "Missing prerequisites") : t("일부 설치 실패", "Some installs failed")}</span>
+        <span class="ink2 msg">{#each linkParts(depsError || deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}</span>
+        <span class="sp"></span>
+        <button class="btn sm quiet" disabled={depsInstalling} onclick={checkDeps}>{t("다시 확인", "Check again")}</button>
+        {#if deps?.installable}
+          <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
+            {depsInstalling ? t("설치 중…", "Installing…") : depsError || depsSteps.length ? t("다시 시도", "Retry") : t("설치", "Install")}
+          </button>
+        {/if}
+        {#if depsSteps.length}
+          <ul class="steps">
+            {#each depsSteps as st (st.need)}
+              <li>
+                <span class={st.outcome === "ok" ? "ok" : st.outcome === "failed" ? "crit" : "t3"}>{st.outcome === "ok" ? "✓" : st.outcome === "failed" ? "✕" : "–"}</span>
+                <span class="b">{st.label}</span>
+                <span class="ink2">{st.outcome === "ok" ? t("설치됨", "Installed") : st.outcome === "failed" ? t("실패", "Failed") : t("건너뜀", "Skipped")}{#if st.detail} — {#each linkParts(st.detail) as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+    {#if needLogin}
+      <div class="band top">
+        <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span><span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
+        <span class="sp"></span>
+        <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
+      </div>
+    {/if}
     {#if loading}
       <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
     {:else if loadError}
@@ -491,7 +529,7 @@
     {:else if current}
       <header class="head">
         <span class="t1">{current.name}</span>
-        <span class="chip">⎇ {current.root.branch ?? t("브랜치 없음", "No branch")} · {current.root.rel}/</span>
+        {#if current.root.git}<span class="chip">⎇ {current.root.branch ?? t("브랜치 없음", "No branch")} · {current.root.rel}/</span>{/if}
         {#if current.root.warning}<span class="chip warn">{current.root.warning}</span>{/if}
         <span class="sp"></span>
         <div class="seg" role="group" aria-label={t("터미널 배치", "Terminal layout")}>
@@ -522,18 +560,6 @@
           <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>{t("파일 열기", "Open file")}</button>
         </div>
       {/each}
-      {#if deps?.message}
-        <div class="band">
-          <span class="b"><span class="crit">✕</span> {t("준비물이 빠졌습니다", "Missing prerequisites")}</span>
-          <span class="ink2">{depsError || deps.message}</span>
-          <span class="sp"></span>
-          {#if deps.installable}
-            <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
-              {depsInstalling ? t("설치 중…", "Installing…") : depsError ? t("다시 시도", "Retry") : t("설치", "Install")}
-            </button>
-          {/if}
-        </div>
-      {/if}
       {#if forgePlugin?.update_available || forgeUpdateMsg}
         <div class="band">
           <span class="b">forge {forgePlugin?.latest ?? ""} {t("사용 가능", "available")}</span>
@@ -550,13 +576,6 @@
         <div class="band">
           <span class="b">forge {forgePlugin.installed}</span>
           <span class="ink2">{t("Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다", "Newer than the forge version Anvil was tested with (0.9.x); the board may be inaccurate")}</span>
-        </div>
-      {/if}
-      {#if needLogin}
-        <div class="band">
-          <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span><span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
-          <span class="sp"></span>
-          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
         </div>
       {/if}
       {#if newVersion}
@@ -629,7 +648,7 @@
             <div class="info info-{r}">
                 {#if r === "run"}
                   {#key current.path}
-                    <NowStrip snap={current} onOpen={openDoc} onStart={() => fill("plan", "/forge:fg-ask ")}>
+                    <NowStrip snap={current} onOpen={openDoc} onStart={() => fill("plan", "/forge:fg-ask ")} blocked={depsBlocked}>
                       {#snippet tools()}
                         <Shortcuts role="run" items={shortcuts.run} blocked={runBlocked} onFill={(t) => fill("run", t)} onChange={(v) => setShortcuts("run", v)} {commands} />
                       {/snippet}
@@ -664,6 +683,7 @@
                 title={titles[current.path]?.[i] ?? null}
                 live={models[n] ?? null}
                 focusTick={focus.name === n ? focus.tick : 0}
+                blocked={depsBlocked}
               />
             </div>
           {/each}
@@ -755,6 +775,11 @@
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
   .sp { flex: 1; }
   .crit { color: var(--crit); }
+  .band.top { margin-top: 8px; flex-wrap: wrap; border-left-color: var(--crit); }
+  .band .msg { min-width: 0; overflow-wrap: anywhere; }
+  .band a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .steps { flex: 0 0 100%; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .steps li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
   .band { flex: none; display: flex; align-items: center; gap: 12px; margin: 0 16px 8px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line2); border-left: 3px solid var(--crit); }
   .tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line2); overflow-x: auto; flex: none; }
   .tab { display: inline-flex; align-items: center; height: 32px; padding: 0 8px; border: 0; border-radius: 6px 6px 0 0; background: none; color: var(--ink2); cursor: pointer; white-space: nowrap; }
