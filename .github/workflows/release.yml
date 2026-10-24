@@ -1,8 +1,10 @@
-# v* 태그 → macOS·Windows·Ubuntu 빌드 → draft 릴리스 하나에 결과물·업데이터 json 첨부 → 모두 성공하면 공개.
+# main push(버전이 새로 바뀌었을 때) 또는 v* 태그 → macOS·Windows·Ubuntu 빌드 → draft 릴리스 하나에 결과물·업데이터 json 첨부 → 모두 성공하면 공개.
 name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -10,7 +12,31 @@ permissions:
   contents: write
 
 jobs:
+  # 릴리스할 태그를 정한다. main push 면 package.json 버전의 태그가 없을 때만 만든다(있으면 tag 가 비어 이후 작업은 건너뛴다).
+  # GITHUB_TOKEN 으로 push 한 태그는 이 워크플로를 다시 깨우지 않으므로 이중 빌드가 없다.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: t
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; exit 0; fi
+          v="v$(jq -r .version package.json)"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then echo "$v 태그가 이미 있다 — 릴리스하지 않는다"; exit 0; fi
+          [ -s "docs/releases/$v.md" ] || { echo "::error::버전 $v 의 릴리스 노트 docs/releases/$v.md 가 없다"; exit 1; }
+          git tag "$v" && git push origin "$v"
+          echo "tag=$v" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +56,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
 
       - name: 리눅스 의존성
         if: matrix.platform == 'ubuntu-22.04'
@@ -56,7 +84,7 @@ jobs:
         id: notes
         shell: bash
         run: |
-          f="docs/releases/${GITHUB_REF_NAME}.md"
+          f="docs/releases/${TAG}.md"
           [ -s "$f" ] || { echo "::error::릴리스 노트 $f 가 없다"; exit 1; }
           { echo "body<<__NOTES__"; cat "$f"; echo; echo "__NOTES__"; } >> "$GITHUB_OUTPUT"
 
@@ -66,8 +94,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Anvil ${{ github.ref_name }}
+          tagName: ${{ needs.tag.outputs.tag }}
+          releaseName: Anvil ${{ needs.tag.outputs.tag }}
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
@@ -76,14 +104,16 @@ jobs:
 
   # 네 빌드가 모두 성공해야 공개한다(도중에 공개하면 latest.json 이 덜 찬 채 업데이터에 보인다).
   publish:
-    needs: build
+    needs: [tag, build]
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
     steps:
       - name: draft 공개
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # draft 는 tag_name 이 untagged-… 로 보여 태그로 못 찾는다 → build 의 releaseName 으로 찾고 태그를 붙여 공개.
         run: |
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .name == \"Anvil $GITHUB_REF_NAME\") | .id" | head -1)
-          [ -n "$id" ] || { echo "::error::$GITHUB_REF_NAME draft 릴리스가 없다"; exit 1; }
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$GITHUB_REF_NAME" -F draft=false -f make_latest=true --jq '.html_url'
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .name == \"Anvil $TAG\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::$TAG draft 릴리스가 없다"; exit 1; }
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$TAG" -F draft=false -f make_latest=true --jq '.html_url'

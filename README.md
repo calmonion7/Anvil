@@ -68,6 +68,7 @@ npm run check          # 타입 검사
 cd src-tauri && cargo test
 scripts/install-app.sh # 이 맥에 빌드해 설치(main을 따라가는 로컬 설치본)
 scripts/release.sh X.Y.Z  # 버전 맞추고 커밋 + 태그 (push는 직접). 릴리스 노트 docs/releases/vX.Y.Z.md 를 먼저 커밋
+# 또는: 버전(5개 파일) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
 ```
 
 ## 라이선스
