@@ -81,23 +81,10 @@ jobs:
 
       - run: npm ci
 
-      - name: 앱 빌드(디버그 · 번들 없이)
-        run: npx tauri build --debug --no-bundle
-
-      - name: tauri-driver
-        run: cargo install tauri-driver --locked --version 2.1.0
-
-      # tauri-driver는 WebView2와 같은 버전의 msedgedriver가 필요하다
-      - name: msedgedriver
-        run: |
-          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}').pv
-          Write-Host "WebView2 $v"
-          Invoke-WebRequest "https://msedgedriver.microsoft.com/$v/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
-          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" -DestinationPath "$env:RUNNER_TEMP\edgedriver"
-          # 드라이버 로그를 결과에 남기도록 감싼다
-          $log = "${{ github.workspace }}\e2e-desktop\out\msedgedriver.log"
-          "@`"%~dp0msedgedriver.exe`" %* --verbose --log-path=`"$log`"" | Set-Content -Encoding ascii "$env:RUNNER_TEMP\edgedriver\msedgedriver-log.cmd"
-          "NATIVE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver-log.cmd" >> $env:GITHUB_ENV
+      # msedgedriver가 WebView2에 붙지 못해(tauri#10670) 테스트 빌드만 웹뷰 디버그 포트 9222를 열고, Playwright가 CDP로 붙는다.
+      # 창 설정을 통째로 덮어쓰므로 tauri.conf.json의 창 설정을 바꾸면 e2e-desktop/tauri.e2e.json도 맞춘다.
+      - name: 앱 빌드(디버그 · 번들 없이 · 디버그 포트)
+        run: npx tauri build --debug --no-bundle --config "${{ github.workspace }}\e2e-desktop\tauri.e2e.json"
 
       - name: 하네스
         working-directory: e2e-desktop
@@ -115,13 +102,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force $env:E2E_OUT | Out-Null
           wsl --status *> "$env:E2E_OUT\wsl-status.log"
-          # 드라이버 없이 앱만 10초 띄워 본다 — 세션이 안 열릴 때 앱 자체 문제인지 가른다
-          $p = Start-Process $env:ANVIL_BIN -PassThru -RedirectStandardOutput "$env:E2E_OUT\direct.out" -RedirectStandardError "$env:E2E_OUT\direct.err"
-          Start-Sleep 10
-          "앱 직접 실행 10초 뒤 살아 있음: $(-not $p.HasExited) (종료 코드 $($p.ExitCode))" | Out-File "$env:E2E_OUT\direct.log"
-          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Out-File -Append "$env:E2E_OUT\direct.log"
-          if (-not $p.HasExited) { Stop-Process $p -Force }
-          npx wdio run wdio.conf.mjs --spec specs/windows-no-wsl.mjs
+          npx playwright test --config windows/playwright.config.mjs before-wsl
 
       - uses: Vampire/setup-wsl@v7.2.0
         if: ${{ !cancelled() }}
@@ -138,7 +119,7 @@ jobs:
           New-Item -ItemType Directory -Force $env:E2E_OUT | Out-Null
           wsl -l -v *> "$env:E2E_OUT\wsl-list.log"
           wsl -- bash -lc "uname -a; for p in node tmux claude curl git; do printf '%s: ' `$p; command -v `$p || echo 없음; done" *> "$env:E2E_OUT\env.log"
-          npx wdio run wdio.conf.mjs --spec specs/windows-wsl.mjs
+          npx playwright test --config windows/playwright.config.mjs after-wsl
 
       - uses: actions/upload-artifact@v4
         if: always()

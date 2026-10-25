@@ -2,11 +2,12 @@
   "name": "anvil-e2e-desktop",
   "private": true,
   "type": "module",
-  "description": "실제 Anvil 앱을 tauri-driver로 띄워 첫 실행 흐름을 확인한다(Linux·Windows 러너 전용)",
+  "description": "실제 Anvil 앱을 띄워 첫 실행 흐름을 확인한다 — Linux는 tauri-driver, Windows는 Playwright(CDP). 러너 전용",
   "scripts": {
     "wdio": "wdio run wdio.conf.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@wdio/cli": "^9.32.0",
     "@wdio/local-runner": "^9.32.0",
     "@wdio/mocha-framework": "^9.32.0",
