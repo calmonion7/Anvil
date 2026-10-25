@@ -362,6 +362,7 @@ async fn deps_status() -> deps::DepsStatus {
         needs: vec![],
         message: None,
         installable: false,
+        platform: "",
     })
 }
 

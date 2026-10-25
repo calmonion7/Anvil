@@ -14,5 +14,5 @@ scenario() {
 }
 
 scenario clean "" "specs/smoke.mjs specs/linux.mjs"
-scenario old-node nodejs "specs/linux-old-node.mjs"
+scenario old-node "nodejs git" "specs/linux-old-node.mjs"
 exit $fail

@@ -88,7 +88,7 @@
   let updating = $state(false);
   let updateError = $state("");
   // 준비물(tmux · claude CLI · forge) — 빠졌으면 띠, macOS는 [설치]
-  type DepsStatus = { needs: string[]; message: string | null; installable: boolean };
+  type DepsStatus = { needs: string[]; message: string | null; installable: boolean; platform?: string };
   type DepsStep = { need: string; label: string; outcome: "ok" | "failed" | "skipped" | "started"; detail: string | null };
   let deps = $state<DepsStatus | null>(null);
   let depsInstalling = $state(false);
@@ -523,9 +523,15 @@
     {/if}
     {#if needLogin}
       <div class="band top">
-        <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span><span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
-        <span class="sp"></span>
-        <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
+        <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span>
+        <!-- Linux·WSL은 외부 터미널 창을 열지 않는다 — 세션 안의 claude가 로그인을 안내한다 -->
+        {#if deps?.platform && deps.platform !== "macos"}
+          <span class="ink2">{t("Anvil에서 세션을 열면 claude가 로그인을 안내합니다", "Open a session in Anvil and claude will guide you through login")}</span>
+        {:else}
+          <span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
+          <span class="sp"></span>
+          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
+        {/if}
       </div>
     {/if}
     {#if loading}

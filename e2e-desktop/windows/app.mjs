@@ -64,22 +64,6 @@ export function step(title, fn) {
   });
 }
 
-/** 아직 안 되는 단계(실패 예정). 실패하면 통과, 통과해 버리면 빨강 — 기능이 생기면 xfail을 step으로 바꾼다. */
-export function xfail(title, fn) {
-  test(`[실패 예정] ${title}`, async () => {
-    let passed = false;
-    try {
-      await fn();
-      passed = true;
-    } catch (e) {
-      console.log(`[실패 예정] ${title} — 기대대로 실패: ${String(e?.message ?? e).split("\n")[0]}`);
-    } finally {
-      await shot(title);
-    }
-    if (passed) throw new Error(`실패 예정 단계가 통과했다 — '${title}'의 xfail을 step으로 바꿀 것`);
-  });
-}
-
 /** 띠가 떠 있고 그 문구를 돌려준다(로그에도 남긴다) */
 export async function bandText() {
   const b = page.locator(".band.top").first();

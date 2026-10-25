@@ -41,9 +41,18 @@ pub fn login_path() -> &'static str {
 
 static BUNDLED_BIN: OnceLock<PathBuf> = OnceLock::new();
 
-/// macOS 앱에 내장된 tmux·jq 폴더(ADR 261024-202909). 앱 시작 때 리소스의 `bin/`에 tmux가 있으면 등록한다.
+/// 앱에 내장한 tmux 버전 — 올릴 때는 scripts/build-tmux.sh·build-tmux-linux.sh를 다시 돌린다.
+pub const TMUX_VERSION: &str = "3.6a";
+/// WSL에 복사해 두는 내장 tmux. 버전이 이름에 있어 업데이트가 설치 폴더를 바꿔도 떠 있는 서버의 실행 파일은 그대로다(ADR 261025-163349).
+pub const WSL_TMUX: &str = "$HOME/.local/share/anvil/bin/tmux-3.6a";
+/// WSL 셸에서 Anvil PATH(Anvil 전용 node → ~/.local/bin)를 앞에 두는 앞머리 — run_path()의 WSL판.
+pub const ANVIL_PATH_SH: &str = r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$PATH"; "#;
+
+/// 앱에 내장된 tmux(·macOS는 jq) 폴더(ADR 261024-202909, 261025-163349). 앱 시작 때 리소스의 `bin/`에 tmux가 있으면 등록한다.
+/// 윈도우는 WSL에 복사할 아키텍처별 원본(tmux-x86_64·tmux-aarch64)이 있다.
 pub fn set_bundled_bin(dir: PathBuf) {
-    if cfg!(target_os = "macos") && dir.join("tmux").is_file() {
+    let tmux = if cfg!(windows) { "tmux-x86_64" } else { "tmux" };
+    if dir.join(tmux).is_file() {
         let _ = BUNDLED_BIN.set(dir);
     }
 }
@@ -63,9 +72,14 @@ fn path_with(bundled: Option<&Path>, base: &str) -> String {
     }
 }
 
-/// tmux·claude·세션에 넘기는 PATH — 내장 폴더가 있으면 맨 앞(상태줄 스크립트의 jq도 내장본을 쓴다).
+/// Anvil PATH: Anvil 전용 node(22 이상, 사용자 node와 공존) → ~/.local/bin(claude) → 내장 폴더(상태줄의 jq도 내장본) → 로그인 PATH.
+fn anvil_path(home: &str, bundled: Option<&Path>, base: &str) -> String {
+    format!("{home}/.local/share/anvil/node/bin:{home}/.local/bin:{}", path_with(bundled, base))
+}
+
+/// tmux·claude·세션·준비물 확인에 넘기는 PATH(세 OS 공통 순서, 윈도우는 WSL 안에서 ANVIL_PATH_SH).
 pub fn run_path() -> String {
-    path_with(bundled_bin(), login_path())
+    anvil_path(&std::env::var("HOME").unwrap_or_default(), bundled_bin(), login_path())
 }
 
 /// `.claude`(플러그인 · 슬래시 명령)가 있는 홈. 윈도우는 claude가 WSL 안에 있으므로 WSL 홈(`\\wsl.localhost\<배포판>\home\<사용자>`).
@@ -73,7 +87,7 @@ pub fn claude_home() -> PathBuf {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
         if cfg!(windows) {
-            let wsl = Command::new("wsl.exe").args(["--", "bash", "-lc", "wslpath -w ~"]).output();
+            let wsl = Command::new("wsl.exe").args(["-e", "bash", "-lc", "wslpath -w ~"]).output();
             if let Some(p) = wsl.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
                 if !p.is_empty() {
                     return PathBuf::from(p);
@@ -86,10 +100,11 @@ pub fn claude_home() -> PathBuf {
 }
 
 /// claude CLI 실행(인자는 코드에 박힌 고정 문자열만). 윈도우는 WSL 안의 claude를 로그인 셸로.
+/// `wsl.exe --`는 WSL 기본 셸이 인자를 다시 펼치므로(`$` 소실, e2e 실측) 셸 없이 `-e`로 넘긴다.
 pub fn claude_command(args: &[&str]) -> Command {
     if cfg!(windows) {
         let mut c = Command::new("wsl.exe");
-        c.args(["--", "bash", "-lc", &format!("claude {}", args.join(" "))]);
+        c.args(["-e", "bash", "-lc", &format!("{ANVIL_PATH_SH}claude {}", args.join(" "))]);
         c
     } else {
         let mut c = Command::new("claude");
@@ -119,14 +134,20 @@ fn script_cmd(p: &Path, windows: bool) -> String {
     if windows { format!("bash '{path}'") } else { format!("'{path}'") }
 }
 
-/// tmux를 부르는 유일한 경로: (프로그램, 공통 인자). 윈도우에선 `wsl.exe -- tmux …`.
+/// tmux를 부르는 유일한 경로: (프로그램, 공통 인자). 윈도우에선 WSL에 복사한 내장본을 셸 없이 —
+/// `$HOME`만 sh가 펼치고 나머지 인자는 그대로 넘긴다(`wsl.exe --`는 세션 명령의 `$`·따옴표를 다시 해석한다).
 fn tmux_argv(conf: &Path) -> (String, Vec<String>) {
-    #[cfg(windows)]
-    let (prog, mut args) = ("wsl.exe".to_string(), vec!["--".to_string(), "tmux".to_string()]);
-    #[cfg(not(windows))]
-    let (prog, mut args) = (tmux_prog(bundled_bin()), Vec::<String>::new());
+    tmux_argv_for(cfg!(windows), bundled_bin(), conf)
+}
+
+fn tmux_argv_for(windows: bool, bundled: Option<&Path>, conf: &Path) -> (String, Vec<String>) {
+    let (prog, mut args) = if windows {
+        ("wsl.exe".to_string(), ["-e", "sh", "-c", &format!(r#"exec "{WSL_TMUX}" "$@""#), "tmux"].map(String::from).to_vec())
+    } else {
+        (tmux_prog(bundled), Vec::new())
+    };
     args.extend(["-u", "-L", SOCKET, "-f"].map(String::from));
-    args.push(tmux_path(conf));
+    args.push(host_path(conf, windows));
     (prog, args)
 }
 
@@ -135,27 +156,6 @@ fn tmux(conf: &Path) -> Command {
     let mut c = Command::new(prog);
     c.args(args).env("PATH", run_path()).env("LANG", lang());
     c
-}
-
-/// WSL·tmux가 없으면 안내 문구. `probe(프로그램, 인자)`가 실행 성공 여부를 알려준다.
-pub fn backend_missing(windows: bool, probe: impl Fn(&str, &[&str]) -> bool) -> Option<&'static str> {
-    if windows {
-        if !probe("wsl.exe", &["--", "true"]) || !probe("wsl.exe", &["--", "tmux", "-V"]) {
-            return Some(crate::i18n::tr("WSL에 tmux 설치 필요: `wsl -- sudo apt install tmux`", "tmux is required in WSL: `wsl -- sudo apt install tmux`"));
-        }
-        // 로그인 셸로 물어야 ~/.local/bin(claude 기본 설치 위치)이 PATH에 잡힌다.
-        if !probe("wsl.exe", &["--", "bash", "-lc", "claude --version"]) {
-            return Some(crate::i18n::tr("WSL에 claude CLI 설치 필요: `wsl -- npm install -g @anthropic-ai/claude-code` 후 `wsl -- claude`로 로그인", "claude CLI is required in WSL: `wsl -- npm install -g @anthropic-ai/claude-code`, then log in with `wsl -- claude`"));
-        }
-    } else {
-        if !probe("tmux", &["-V"]) {
-            return Some(crate::i18n::tr("tmux 설치 필요: `brew install tmux`", "tmux is required: `brew install tmux`"));
-        }
-        if !probe("claude", &["--version"]) {
-            return Some(crate::i18n::tr("claude CLI 설치 필요: `npm install -g @anthropic-ai/claude-code` 후 터미널에서 `claude`로 로그인", "claude CLI is required: `npm install -g @anthropic-ai/claude-code`, then log in with `claude` in a terminal"));
-        }
-    }
-    None
 }
 
 // ---------- 앱 데이터 파일(tmux.conf · 훅) ----------
@@ -395,10 +395,10 @@ pub fn live_sessions(files: &Files) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// 세션 안에서 도는 셸 명령. 윈도우(WSL)에선 앱의 PATH를 넘기지 않으므로 claude 기본 설치 위치를 앞에 붙인다.
+/// 세션 안에서 도는 셸 명령. 윈도우(WSL)에선 앱의 PATH를 넘기지 않으므로 Anvil PATH(Anvil 전용 node·claude)를 앞에 붙인다.
 fn session_cmd(title: &str, model: &str, hooks: &Path, windows: bool) -> String {
     let model_arg = if model == "default" { String::new() } else { format!("--model {model} ") };
-    let path = if windows { r#"PATH="$HOME/.local/bin:$PATH"; "# } else { "" };
+    let path = if windows { ANVIL_PATH_SH } else { "" };
     format!(
         "{UNSET_PARENT_CLAUDE}{path}exec claude -n {} {model_arg}--settings {}",
         sh_quote(title),
@@ -685,23 +685,25 @@ mod tests {
 
     /// Finder에서 띄운 앱은 PATH·LANG이 없다 — tmux 명령은 늘 로그인 PATH와 UTF-8 로캘, `-u`를 실어야
     /// claude·tmux를 찾고 한글이 `_`로 바뀌지 않는다(#2 실측).
+    /// Anvil이 tmux·세션·준비물 확인에 쓰는 PATH(세 OS 공통): Anvil 전용 node → ~/.local/bin → 내장 폴더 → 로그인 PATH
     #[test]
-    fn backend_missing_reports_wsl_tmux_hint() {
-        let none = |_: &str, _: &[&str]| false;
-        let all = |_: &str, _: &[&str]| true;
-        let no_tmux = |_: &str, a: &[&str]| !a.contains(&"tmux");
-        assert!(backend_missing(true, none).unwrap().contains("wsl -- sudo apt install tmux"));
-        assert!(backend_missing(true, no_tmux).unwrap().contains("WSL에 tmux"));
-        assert_eq!(backend_missing(true, all), None);
-        assert!(backend_missing(false, none).is_some());
-        assert_eq!(backend_missing(false, all), None);
+    fn anvil_path_leads_with_anvil_node() {
+        assert_eq!(anvil_path("/home/u", None, "/usr/bin:/bin"), "/home/u/.local/share/anvil/node/bin:/home/u/.local/bin:/usr/bin:/bin");
+        let bin = Path::new("/opt/Anvil/bin");
+        assert!(anvil_path("/home/u", Some(bin), "/usr/bin").starts_with("/home/u/.local/share/anvil/node/bin:/home/u/.local/bin:/opt/Anvil/bin:"));
+        assert!(ANVIL_PATH_SH.starts_with(r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$PATH"; "#), "{ANVIL_PATH_SH}");
     }
 
+    /// 윈도우: tmux는 WSL에 복사해 둔 버전 이름의 내장본을 셸 없이(-e) 부른다 — 인자가 다시 쪼개지지 않게
     #[test]
-    fn backend_missing_reports_claude_cli() {
-        let no_claude = |p: &str, a: &[&str]| p != "claude" && !a.iter().any(|x| x.contains("claude"));
-        assert!(backend_missing(false, no_claude).unwrap().contains("claude CLI 설치 필요"));
-        assert!(backend_missing(true, no_claude).unwrap().contains("WSL에 claude CLI"));
+    fn windows_tmux_runs_copied_bundle_without_shell_splitting() {
+        let (prog, args) = tmux_argv_for(true, None, Path::new(r"C:\Users\me\tmux.conf"));
+        assert_eq!(prog, "wsl.exe");
+        assert_eq!(args[..5], ["-e", "sh", "-c", &format!(r#"exec "{WSL_TMUX}" "$@""#), "tmux"]);
+        assert!(args.ends_with(&["-u", "-L", "anvil", "-f", "/mnt/c/Users/me/tmux.conf"].map(String::from)), "{args:?}");
+        assert!(WSL_TMUX.contains(TMUX_VERSION));
+        let (prog, args) = tmux_argv_for(false, Some(Path::new("/opt/Anvil/bin")), Path::new("/c/tmux.conf"));
+        assert_eq!((prog.as_str(), args[0].as_str()), ("/opt/Anvil/bin/tmux", "-u"));
     }
 
     /// 윈도우: claude는 WSL 안에서 돌므로 훅·설정 경로는 WSL 경로, 앱의 윈도우 PATH는 넘기지 않는다.
@@ -710,7 +712,7 @@ mod tests {
         let hooks = Path::new(r"C:\Users\me\AppData\Roaming\com.taebro.anvil\hooks.json");
         let cmd = session_cmd("[Anvil] [p] PLAN", "opus", hooks, true);
         assert!(cmd.contains("--settings '/mnt/c/Users/me/AppData/Roaming/com.taebro.anvil/hooks.json'"), "{cmd}");
-        assert!(cmd.contains(r#"PATH="$HOME/.local/bin:$PATH"; exec claude"#), "{cmd}");
+        assert!(cmd.contains(&format!("{ANVIL_PATH_SH}exec claude")), "{cmd}");
         assert!(!session_env("n", "t", true).iter().any(|e| e.starts_with("PATH=")));
         assert!(session_env("n", "t", false).iter().any(|e| e.starts_with("PATH=")));
         let script = Path::new(r"C:\Users\me\AppData\Roaming\com.taebro.anvil\anvil-hook.sh");

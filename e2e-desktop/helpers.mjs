@@ -1,4 +1,4 @@
-// 시나리오 공통 — 단계마다 스크린샷, 화면 언어 고정, 아직 안 되는 단계 표시.
+// 시나리오 공통 — 단계마다 스크린샷, 화면 언어 고정.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,22 +30,6 @@ export function step(title, fn) {
     } finally {
       await shot(title);
     }
-  });
-}
-
-/** 아직 안 되는 단계(실패 예정). 실패하면 통과, 통과해 버리면 빨강 — 기능이 생기면 xfail을 step으로 바꾼다. */
-export function xfail(title, fn) {
-  it(`[실패 예정] ${title}`, async function () {
-    let passed = false;
-    try {
-      await fn.call(this);
-      passed = true;
-    } catch (e) {
-      console.log(`[실패 예정] ${title} — 기대대로 실패: ${String(e?.message ?? e).split("\n")[0]}`);
-    } finally {
-      await shot(title);
-    }
-    if (passed) throw new Error(`실패 예정 단계가 통과했다 — '${title}'의 xfail을 step으로 바꿀 것`);
   });
 }
 

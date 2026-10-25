@@ -52,6 +52,34 @@ test("node가 빠지면 띠에 뜨고 [설치] 결과에 node 항목이 보인�
   await expect(band.locator("ul.steps")).toContainText("shasum 불일치");
 });
 
+// v0.1.6 — Linux·WSL은 외부 로그인 창이 없다: claude를 깔면 '세션을 열면 로그인 안내' 문구만, [로그인] 버튼 없음
+test("macOS가 아니면 claude 설치 뒤 로그인 버튼 없이 안내만 보인다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript(() => {
+    const w = window as any;
+    w.__deps = { needs: ["claude"], message: "필요: claude CLI", installable: true, platform: "linux" };
+    w.__depsInstall = [{ need: "claude", label: "claude CLI", outcome: "ok", detail: null }];
+  });
+  await page.goto("/");
+  await page.locator(".band.top").getByRole("button", { name: "설치" }).click();
+  // 준비물 띠의 항목 줄에도 같은 글자가 있어 ✕가 없는 띠(로그인 띠)만
+  const login = page.locator(".band.top", { hasText: "claude CLI 설치됨", hasNot: page.locator(".crit") });
+  await expect(login).toContainText("Anvil에서 세션을 열면 claude가 로그인을 안내합니다");
+  await expect(login.getByRole("button", { name: "로그인" })).toHaveCount(0);
+});
+
+test("macOS는 claude 설치 뒤 [로그인] 버튼이 그대로 보인다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript(() => {
+    const w = window as any;
+    w.__deps = { needs: ["claude"], message: "필요: claude CLI", installable: true, platform: "macos" };
+    w.__depsInstall = [{ need: "claude", label: "claude CLI", outcome: "ok", detail: null }];
+  });
+  await page.goto("/");
+  await page.locator(".band.top").getByRole("button", { name: "설치" }).click();
+  await expect(page.locator(".band.top", { hasText: "claude CLI 설치됨", hasNot: page.locator(".crit") }).getByRole("button", { name: "로그인" })).toBeVisible();
+});
+
 // v0.1.5 — [세션 열기] 직후 터미널에 초점이 가 바로 타이핑된다(첫 실행 신뢰 질문)
 test("[세션 열기] 뒤 터미널에 초점이 간다", async ({ page }) => {
   await mockIpc(page);

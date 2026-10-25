@@ -4,12 +4,13 @@
 set -eu
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-common ca-certificates wget fonts-noto-cjk \
+apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-common ca-certificates wget fonts-noto-cjk sudo \
   webkit2gtk-driver xvfb dbus >/dev/null
 [ -z "$PREINSTALL" ] || apt-get install -y -qq $PREINSTALL >/dev/null
 
-# 결과 폴더를 러너 사용자도 지울 수 있게 같은 uid로
+# 결과 폴더를 러너 사용자도 지울 수 있게 같은 uid로. 데스크톱 사용자처럼 sudo 가능(시나리오가 안내대로 git을 직접 깐다)
 useradd -m -s /bin/bash -u "$(stat -c %u /work)" tester
+echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
 out="/work/e2e-desktop/out/linux-$SCENARIO"
 mkdir -p "$out" && chown tester "$out"
 { echo "== 컨테이너 =="; cat /etc/os-release | head -2; for p in node tmux claude curl git; do printf '%s: ' "$p"; command -v "$p" || echo 없음; done; } > "$out/env.log"
