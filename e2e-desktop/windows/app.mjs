@@ -19,7 +19,7 @@ export let page;
 export async function launch() {
   fs.mkdirSync(out, { recursive: true });
   const log = fs.openSync(path.join(out, "app.log"), "a");
-  app = spawn(process.env.ANVIL_BIN, [], { env: cleanEnv, stdio: ["ignore", log, log] });
+  app = spawn(process.env.ANVIL_BIN, [], { env: cleanEnv, stdio: ["ignore", log, log], windowsHide: true });
   for (let i = 0; i < 120 && !(await fetch(`${CDP}/json/version`).then((r) => r.ok, () => false)); i++) {
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -50,7 +50,7 @@ export async function close() {
 export async function shot(name) {
   n += 1;
   const file = path.join(out, `${String(n).padStart(2, "0")}-${name.replace(/[^\p{L}\p{N}]+/gu, "-")}.png`);
-  await page?.screenshot({ path: file }).catch((e) => console.log(`스크린샷 실패(${name}): ${e.message}`));
+  await page?.screenshot({ path: file, timeout: 30000 }).catch((e) => console.log(`스크린샷 실패(${name}): ${e.message}`));
 }
 
 /** 지금 되어야 하는 단계. 끝나면 스크린샷 */
@@ -97,12 +97,12 @@ export async function openSession() {
   let text = "";
   while (Date.now() < deadline && !/Claude Code|Welcome|text style|theme/i.test(text)) {
     await page.waitForTimeout(2000);
-    text = await rows.innerText().catch(() => "");
+    text = await rows.innerText({ timeout: 5000 }).catch(() => "");
   }
   console.log(`터미널: ${text.replace(/\s+/g, " ").slice(0, 300)}`);
   if (!/Claude Code|Welcome|text style|theme/i.test(text)) {
     // 실패 원인을 남긴다 — 세션 칸 문구(오류), WSL 안 tmux 세션·프로세스
-    console.log(`세션 칸: ${(await page.locator(".term-plan").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 400)}`);
+    console.log(`세션 칸: ${(await page.locator(".term-plan").innerText({ timeout: 5000 }).catch(() => "")).replace(/\s+/g, " ").slice(0, 400)}`);
     for (const c of ["~/.local/share/anvil/bin/tmux-3.6a -L anvil ls", "ps -ef | grep -E 'tmux|claude' | grep -v grep"]) {
       try {
         console.log(`[wsl] ${c}\n${wsl(c)}`);

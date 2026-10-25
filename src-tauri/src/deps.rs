@@ -2,7 +2,7 @@
 //! tmux는 세 OS 모두 앱에 내장돼 준비물이 아니다(ADR 261024-202909, 261025-163349). Windows는 WSL 안에서 확인·설치하고,
 //! WSL과 배포판은 준비물보다 먼저 있어야 하는 바탕이라 안내만 한다.
 
-use crate::session::{bundled_bin, login_path, run_path, ANVIL_PATH_SH, WSL_TMUX};
+use crate::session::{bundled_bin, hidden_command, login_path, run_path, ANVIL_PATH_SH, WSL_TMUX};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
@@ -268,7 +268,7 @@ fn wsl_tmux_copy_cmd(src: &str) -> String {
 fn probe_out(os: Os, prog: &str, args: &[&str]) -> Option<String> {
     let out = if os == Os::Wsl {
         let line = std::iter::once(prog).chain(args.iter().copied()).map(|a| format!("'{}'", a.replace('\'', r"'\''"))).collect::<Vec<_>>().join(" ");
-        Command::new("wsl.exe").args(wsl_argv(&line)).output()
+        hidden_command("wsl.exe").args(wsl_argv(&line)).output()
     } else {
         Command::new(prog).args(args).env("PATH", run_path()).output()
     };
@@ -278,7 +278,7 @@ fn probe_out(os: Os, prog: &str, args: &[&str]) -> Option<String> {
 /// 사용자 PATH(Anvil PATH 없이)에 node가 있는가 — 있으면 [설치]가 그 node를 가리지 않는다.
 fn user_node(os: Os) -> bool {
     let out = if os == Os::Wsl {
-        Command::new("wsl.exe").args(["-e", "bash", "-lc", "command -v node"]).output()
+        hidden_command("wsl.exe").args(["-e", "bash", "-lc", "command -v node"]).output()
     } else {
         Command::new("node").arg("--version").env("PATH", login_path()).output()
     };
@@ -287,7 +287,7 @@ fn user_node(os: Os) -> bool {
 
 /// 호스트에서 바로 실행(윈도우의 wsl.exe 확인용).
 fn probe_host(prog: &str, args: &[&str]) -> bool {
-    Command::new(prog).args(args).output().is_ok_and(|o| o.status.success())
+    hidden_command(prog).args(args).output().is_ok_and(|o| o.status.success())
 }
 
 fn home() -> std::path::PathBuf {
@@ -305,9 +305,15 @@ pub fn status() -> DepsStatus {
         if let Some(m) = wsl_missing(probe_host) {
             return DepsStatus { needs: vec![], message: Some(m.to_string()), installable: false, platform };
         }
-        // 세션이 쓸 tmux를 먼저 놓아 둔다(ADR 261025-163349)
-        if let Some(dir) = bundled_bin() {
-            let _ = Command::new("wsl.exe").args(wsl_argv(&wsl_tmux_copy_cmd(&crate::wsl::to_wsl(&dir.to_string_lossy())))).output();
+        // 세션이 쓸 tmux를 먼저 놓아 둔다(ADR 261025-163349). 실패는 세션 열기에서야 드러나니 로그로 남긴다.
+        match bundled_bin() {
+            Some(dir) => {
+                let out = hidden_command("wsl.exe").args(wsl_argv(&wsl_tmux_copy_cmd(&crate::wsl::to_wsl(&dir.to_string_lossy())))).output();
+                if let Some(o) = out.ok().filter(|o| !o.status.success()) {
+                    eprintln!("내장 tmux를 WSL에 복사하지 못함: {}", String::from_utf8_lossy(&o.stderr).trim());
+                }
+            }
+            None => eprintln!("내장 tmux 폴더(리소스 bin/tmux-x86_64)를 찾지 못함"),
         }
     }
     let node = probe_out(os, "node", &["--version"]);
@@ -323,7 +329,7 @@ pub fn install() -> Vec<Step> {
     let plan = Plan { os, has_brew: os == Os::Mac && probe_out(os, "brew", &["--version"]).is_some(), user_node: user_node(os) };
     install_with(&needs, &plan, |cmd| {
         let out = if os == Os::Wsl {
-            Command::new("wsl.exe").args(wsl_argv(cmd)).output()
+            hidden_command("wsl.exe").args(wsl_argv(cmd)).output()
         } else {
             Command::new("/bin/bash").args(["-c", cmd]).env("PATH", run_path()).output()
         }

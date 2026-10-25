@@ -39,6 +39,19 @@ pub fn login_path() -> &'static str {
     })
 }
 
+/// 화면 없이 도는 명령. 윈도우 GUI 앱이 wsl.exe를 띄우면 콘솔 창이 깜빡이므로(5초마다 상태 확인) 창을 만들지 않는다.
+pub fn hidden_command(prog: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut c = Command::new(prog);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c
+}
+
 static BUNDLED_BIN: OnceLock<PathBuf> = OnceLock::new();
 
 /// 앱에 내장한 tmux 버전 — 올릴 때는 scripts/build-tmux.sh·build-tmux-linux.sh를 다시 돌린다.
@@ -87,7 +100,7 @@ pub fn claude_home() -> PathBuf {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
         if cfg!(windows) {
-            let wsl = Command::new("wsl.exe").args(["-e", "bash", "-lc", "wslpath -w ~"]).output();
+            let wsl = hidden_command("wsl.exe").args(["-e", "bash", "-lc", "wslpath -w ~"]).output();
             if let Some(p) = wsl.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
                 if !p.is_empty() {
                     return PathBuf::from(p);
@@ -103,7 +116,7 @@ pub fn claude_home() -> PathBuf {
 /// `wsl.exe --`는 WSL 기본 셸이 인자를 다시 펼치므로(`$` 소실, e2e 실측) 셸 없이 `-e`로 넘긴다.
 pub fn claude_command(args: &[&str]) -> Command {
     if cfg!(windows) {
-        let mut c = Command::new("wsl.exe");
+        let mut c = hidden_command("wsl.exe");
         c.args(["-e", "bash", "-lc", &format!("{ANVIL_PATH_SH}claude {}", args.join(" "))]);
         c
     } else {
@@ -153,7 +166,7 @@ fn tmux_argv_for(windows: bool, bundled: Option<&Path>, conf: &Path) -> (String,
 
 fn tmux(conf: &Path) -> Command {
     let (prog, args) = tmux_argv(conf);
-    let mut c = Command::new(prog);
+    let mut c = hidden_command(&prog);
     c.args(args).env("PATH", run_path()).env("LANG", lang());
     c
 }
