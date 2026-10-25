@@ -1,10 +1,10 @@
 #!/bin/bash
-# 컨테이너(root)에서: 데스크톱 Ubuntu에 원래 있는 것(WebKitGTK·인증서·wget) + 테스트 도구(WebDriver·가상 화면)만 깔고,
+# 컨테이너(root)에서: 데스크톱 Ubuntu에 원래 있는 것(WebKitGTK·인증서·wget·한글 글꼴) + 테스트 도구(WebDriver·가상 화면)만 깔고,
 # 일반 사용자 tester로 시나리오를 돌린다. curl·git·node·tmux는 일부러 넣지 않는다(데스크톱 기본 설치에 없다).
 set -eu
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-common ca-certificates wget \
+apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-common ca-certificates wget fonts-noto-cjk \
   webkit2gtk-driver xvfb dbus >/dev/null
 [ -z "$PREINSTALL" ] || apt-get install -y -qq $PREINSTALL >/dev/null
 
