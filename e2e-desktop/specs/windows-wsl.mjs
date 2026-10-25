@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import { bandGone, bandText, installAll, korean, openSession, step, xfail } from "../helpers.mjs";
 
-const wsl = (cmd) => execSync(`wsl -- bash -lc "${cmd}"`, { encoding: "utf8" }).trim();
+const wsl = (cmd) => execSync(`wsl -- bash -lc "${cmd}"`, { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: undefined } }).trim();
 
 describe("Windows WSL1 Ubuntu", () => {
   before(korean);

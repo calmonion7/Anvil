@@ -94,7 +94,10 @@ jobs:
           Write-Host "WebView2 $v"
           Invoke-WebRequest "https://msedgedriver.microsoft.com/$v/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
           Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" -DestinationPath "$env:RUNNER_TEMP\edgedriver"
-          "NATIVE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" >> $env:GITHUB_ENV
+          # 드라이버 로그를 결과에 남기도록 감싼다
+          $log = "${{ github.workspace }}\e2e-desktop\out\msedgedriver.log"
+          "@`"%~dp0msedgedriver.exe`" %* --verbose --log-path=`"$log`"" | Set-Content -Encoding ascii "$env:RUNNER_TEMP\edgedriver\msedgedriver-log.cmd"
+          "NATIVE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver-log.cmd" >> $env:GITHUB_ENV
 
       - name: 하네스
         working-directory: e2e-desktop
@@ -112,6 +115,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force $env:E2E_OUT | Out-Null
           wsl --status *> "$env:E2E_OUT\wsl-status.log"
+          # 드라이버 없이 앱만 10초 띄워 본다 — 세션이 안 열릴 때 앱 자체 문제인지 가른다
+          $p = Start-Process $env:ANVIL_BIN -PassThru -RedirectStandardOutput "$env:E2E_OUT\direct.out" -RedirectStandardError "$env:E2E_OUT\direct.err"
+          Start-Sleep 10
+          "앱 직접 실행 10초 뒤 살아 있음: $(-not $p.HasExited) (종료 코드 $($p.ExitCode))" | Out-File "$env:E2E_OUT\direct.log"
+          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Out-File -Append "$env:E2E_OUT\direct.log"
+          if (-not $p.HasExited) { Stop-Process $p -Force }
           npx wdio run wdio.conf.mjs --spec specs/windows-no-wsl.mjs
 
       - uses: Vampire/setup-wsl@v7.2.0

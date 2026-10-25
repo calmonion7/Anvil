@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import { bandText, installAll, korean, step, xfail } from "../helpers.mjs";
 
-const sh = (cmd) => execSync(`bash -lc '${cmd}'`, { encoding: "utf8" }).trim();
+// 하네스의 NODE_OPTIONS(--import)를 빼야 옛 node가 뜬다
+const sh = (cmd) => execSync(`bash -lc '${cmd}'`, { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: undefined } }).trim();
 
 describe("Linux 옛 node(v12)", () => {
   before(korean);

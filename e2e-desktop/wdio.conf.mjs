@@ -32,7 +32,9 @@ export const config = {
     // 앱의 표준 출력·오류는 tauri-driver를 거쳐 여기로
     const log = fs.openSync(path.join(out, "app.log"), "a");
     const args = process.env.NATIVE_DRIVER ? ["--native-driver", process.env.NATIVE_DRIVER] : [];
-    driver = spawn(process.env.TAURI_DRIVER || "tauri-driver", args, { stdio: ["ignore", log, log] });
+    // 작업 프로세스의 NODE_OPTIONS(--import 로더)가 앱 → 앱이 띄우는 node·claude로 새지 않게
+    const env = { ...process.env, NODE_OPTIONS: undefined };
+    driver = spawn(process.env.TAURI_DRIVER || "tauri-driver", args, { env, stdio: ["ignore", log, log] });
     for (let i = 0; i < 50 && !(await listening()); i++) await new Promise((r) => setTimeout(r, 200));
   },
   afterSession() {
