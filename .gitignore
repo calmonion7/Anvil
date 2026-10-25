@@ -22,5 +22,8 @@ src-tauri/gen/schemas/
 /test-results/
 /playwright-report/
 
+# 실제 앱 e2e(e2e-desktop) 스크린샷·로그
+/e2e-desktop/out/
+
 # Claude Code 워크트리·로컬 설정
 .claude/
