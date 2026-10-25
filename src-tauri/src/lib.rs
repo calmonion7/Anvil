@@ -269,14 +269,23 @@ fn session_models(app: AppHandle) -> HashMap<String, session::ModelInfo> {
     session::models(&files(&app))
 }
 
+/// 동기 명령은 메인 스레드에서 돈다 — 윈도우는 tmux가 wsl.exe를 거쳐 느릴 수 있어 화면이 굳지 않게 따로 돌린다.
 #[tauri::command]
-fn session_start(app: AppHandle, state: State<AppState>, project: String, role: String) -> Result<String, String> {
+async fn session_start(app: AppHandle, project: String, role: String) -> Result<String, String> {
     let project = PathBuf::from(project);
-    registered(&state, &project)?;
+    registered(&app.state::<AppState>(), &project)?;
     if role != "plan" && role != "run" {
         return Err(format!("{}{role}", crate::i18n::tr("알 수 없는 역할: ", "Unknown role: ")));
     }
-    session::start(&files(&app), &project, &role)
+    tauri::async_runtime::spawn_blocking(move || {
+        let r = session::start(&files(&app), &project, &role);
+        if let Err(e) = &r {
+            eprintln!("session_start {role}: {e}");
+        }
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// 세션을 끝내는 유일한 길(확인창은 화면이 띄운다). 앱 종료는 세션을 죽이지 않는다.

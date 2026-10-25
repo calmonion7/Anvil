@@ -100,6 +100,17 @@ export async function openSession() {
     text = await rows.innerText().catch(() => "");
   }
   console.log(`터미널: ${text.replace(/\s+/g, " ").slice(0, 300)}`);
+  if (!/Claude Code|Welcome|text style|theme/i.test(text)) {
+    // 실패 원인을 남긴다 — 세션 칸 문구(오류), WSL 안 tmux 세션·프로세스
+    console.log(`세션 칸: ${(await page.locator(".term-plan").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 400)}`);
+    for (const c of ["~/.local/share/anvil/bin/tmux-3.6a -L anvil ls", "ps -ef | grep -E 'tmux|claude' | grep -v grep"]) {
+      try {
+        console.log(`[wsl] ${c}\n${wsl(c)}`);
+      } catch (e) {
+        console.log(`[wsl] ${c} 실패: ${String(e.message).split("\n").slice(0, 3).join(" / ")}`);
+      }
+    }
+  }
   assert.match(text, /Claude Code|Welcome|text style|theme/i, "터미널에 claude 첫 화면 문구가 보이지 않는다");
 }
 
