@@ -24,8 +24,12 @@ export async function launch() {
     await new Promise((r) => setTimeout(r, 500));
   }
   browser = await chromium.connectOverCDP(CDP);
-  const ctx = browser.contexts()[0];
-  page = ctx.pages().find((p) => p.url().includes("tauri")) ?? (await ctx.waitForEvent("page"));
+  // 처음 띄울 때는 웹뷰가 잠시 about:blank — 앱 화면(tauri.localhost)이 될 때까지
+  for (let i = 0; i < 120 && !page; i++) {
+    page = browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("tauri"));
+    if (!page) await new Promise((r) => setTimeout(r, 500));
+  }
+  assert.ok(page, `앱 화면을 못 찾음: ${browser.contexts().flatMap((c) => c.pages()).map((p) => p.url()).join(", ")}`);
   await page.locator(".main").waitFor({ timeout: 60000 });
   await page.evaluate(() => localStorage.setItem("anvil.lang", "ko"));
   await page.reload();

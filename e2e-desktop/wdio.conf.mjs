@@ -24,6 +24,8 @@ export const config = {
   maxInstances: 1,
   capabilities: [{ maxInstances: 1, "tauri:options": { application: process.env.ANVIL_BIN } }],
   logLevel: "warn",
+  // 단계가 다 끝난 뒤 WebKitWebDriver가 가끔 먼저 내려가 세션 정리(DELETE)가 실패한다 — 한 번 더 돌린다(#11 run.md)
+  specFileRetries: 1,
   reporters: ["spec"],
   framework: "mocha",
   // 설치 단계가 네트워크로 node·claude·forge를 받는다
