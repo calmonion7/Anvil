@@ -168,20 +168,36 @@ fn node_cmd(p: &Plan) -> String {
             "A=$(uname -m); [ \"$A\" = x86_64 ] && A=x64\nF=node-$V-darwin-$A.tar.xz; T=$(mktemp -d); cd \"$T\"\ncurl -fsSLO https://nodejs.org/dist/$V/$F\n".to_string(),
             "",
             "curl -fsSL https://nodejs.org/dist/$V/SHASUMS256.txt | grep \" $F$\" | shasum -a 256 -c -",
-            "tar -xf",
+            "tar -xf \"$F\" -C \"$D\" --strip-components 1".to_string(),
         )
     } else {
         (
             format!("{DL}\nA=$(uname -m); case \"$A\" in x86_64) A=x64;; aarch64) A=arm64;; esac\nF=node-$V-linux-$A.tar.gz; T=$(mktemp -d); cd \"$T\"\ndl https://nodejs.org/dist/$V/$F \"$F\"\n"),
             "dl https://nodejs.org/dist/$V/SHASUMS256.txt SHASUMS256.txt\n",
             "grep \" $F$\" SHASUMS256.txt | sha256sum -c -",
-            "tar -xzf",
+            format!("tar -xzf \"$F\" -C \"$D\" --strip-components 1 2>/dev/null || {{ rm -rf \"$D\"; mkdir -p \"$D\"; python3 - \"$F\" \"$D\" <<'PY'\n{UNTAR_PY}PY\n}}"),
         )
     };
     format!(
-        "set -e\nV={NODE_VERSION}; {fetch}{file}{check}\nD=\"$HOME/.local/share/anvil/node\"; rm -rf \"$D\"; mkdir -p \"$D\" \"$HOME/.local/bin\"\n{untar} \"$F\" -C \"$D\" --strip-components 1\n{link}rm -rf \"$T\""
+        "set -e\nV={NODE_VERSION}; {fetch}{file}{check}\nD=\"$HOME/.local/share/anvil/node\"; rm -rf \"$D\"; mkdir -p \"$D\" \"$HOME/.local/bin\"\n{untar}\n{link}rm -rf \"$T\""
     )
 }
+
+/// tar가 실패할 때(WSL1 + GNU tar 1.35 — WSL1에 없는 시스템 호출, VM 실측) 첫 폴더를 벗겨 푸는 python3 tarfile.
+const UNTAR_PY: &str = r#"import sys, tarfile
+src, dst = sys.argv[1], sys.argv[2]
+with tarfile.open(src) as t:
+    ms = []
+    for m in t.getmembers():
+        head, _, rest = m.name.partition("/")
+        if rest:
+            m.name = rest
+            ms.append(m)
+    try:
+        t.extractall(dst, members=ms, filter="tar")
+    except TypeError:
+        t.extractall(dst, members=ms)
+"#;
 
 /// 준비물 하나를 설치하는 bash 명령. tmux는 Homebrew로만 설치한다(세 OS 모두 내장이라 보통 오지 않는다).
 pub fn step_cmd(need: Need, p: &Plan) -> Result<String, String> {
@@ -573,6 +589,9 @@ mod tests {
         assert!(c.contains("x86_64) A=x64") && c.contains("aarch64) A=arm64"), "{c}");
         assert!(c.contains("$HOME/.local/share/anvil/node") && c.contains("ln -sf"), "사용자 PATH에 node가 없으면 채운다: {c}");
         assert!(c.contains("wget"), "{c}");
+        // WSL1 + 최신 GNU tar(1.35)는 WSL1에 없는 시스템 호출로 풀기에 실패한다(VM 실측) — python3 tarfile로 다시 푼다
+        assert!(c.contains("--strip-components 1 2>/dev/null ||") && c.contains("python3 - \"$F\" \"$D\""), "{c}");
+        assert!(!step_cmd(Need::Node, &MAC).unwrap().contains("python3"));
         let keep = step_cmd(Need::Node, &Plan { user_node: true, ..LINUX }).unwrap();
         assert!(!keep.contains("ln -sf"), "옛 node가 있으면 심링크하지 않는다: {keep}");
         let claude = step_cmd(Need::Claude, &LINUX).unwrap();

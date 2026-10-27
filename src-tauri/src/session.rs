@@ -96,20 +96,22 @@ pub fn run_path() -> String {
 }
 
 /// `.claude`(플러그인 · 슬래시 명령)가 있는 홈. 윈도우는 claude가 WSL 안에 있으므로 WSL 홈(`\\wsl.localhost\<배포판>\home\<사용자>`).
+/// 윈도우는 WSL 홈을 찾았을 때만 기억한다 — 앱이 배포판보다 먼저 떠 있으면 나중에 생긴 WSL 홈을 놓친다(VM 실측: forge를 깔아도 띠가 남음).
 pub fn claude_home() -> PathBuf {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
-    HOME.get_or_init(|| {
-        if cfg!(windows) {
-            let wsl = hidden_command("wsl.exe").args(["-e", "bash", "-lc", "wslpath -w ~"]).output();
-            if let Some(p) = wsl.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
-                if !p.is_empty() {
-                    return PathBuf::from(p);
-                }
+    if let Some(h) = HOME.get() {
+        return h.clone();
+    }
+    if cfg!(windows) {
+        let wsl = hidden_command("wsl.exe").args(["-e", "bash", "-lc", "wslpath -w ~"]).output();
+        if let Some(p) = wsl.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
+            if !p.is_empty() {
+                return HOME.get_or_init(|| PathBuf::from(p)).clone();
             }
         }
-        std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default().into()
-    })
-    .clone()
+        return std::env::var("USERPROFILE").unwrap_or_default().into();
+    }
+    HOME.get_or_init(|| std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default().into()).clone()
 }
 
 /// claude CLI 실행(인자는 코드에 박힌 고정 문자열만). 윈도우는 WSL 안의 claude를 로그인 셸로.
