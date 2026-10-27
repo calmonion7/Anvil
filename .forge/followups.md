@@ -4,7 +4,7 @@
 - 3부 [설치]가 curl(node·claude 받기)과 git(forge 마켓플레이스)에 기댄다면, 데스크톱 Ubuntu 기본 설치에는 둘 다 없다 — 감지해 준비물로 보이거나 wget 등으로 대체해야 한다.
   Evidence: e2e-desktop 깨끗한 컨테이너 `env.log`의 `curl: 없음`, `git: 없음`(데스크톱 기본 구성을 따라 일부러 뺌).
 
-<!-- followup: fu-6f1dafa02d5b | source: win-linux-deps-install-3of3 | task: 15 | date: 2026-10-27 | status: open | taken: - -->
+<!-- followup: fu-6f1dafa02d5b | source: win-linux-deps-install-3of3 | task: 15 | date: 2026-10-27 | status: taken | taken: 16 -->
 - [설치] 직후 자동 재확인이 node를 아직 없는 것으로 보여, [다시 확인]을 눌러야 띠가 사라졌다(WSL1 VM). 확인 호출 자체는 정상(같은 방식으로 v22.20.0) — 설치 직후 재확인의 시점·캐시를 살펴볼 것.
   Evidence: S5 VM 스크린샷 '필요: node 22 이상 / ✓ node 22 이상 설치됨' 뒤 [다시 확인]으로 띠 사라짐.
 
