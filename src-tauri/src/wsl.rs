@@ -2,6 +2,14 @@
 
 /// `C:\x\y` → `/mnt/c/x/y`, `\\wsl$\Distro\home\a` → `/home/a`. 이미 유닉스 경로면 그대로.
 pub fn to_wsl(win: &str) -> String {
+    // 확장 경로 접두어(`\\?\D:\…`, `\\?\UNC\server\…`)를 먼저 걷어 낸다
+    let unc;
+    let win = if let Some(rest) = win.strip_prefix(r"\\?\UNC\") {
+        unc = format!(r"\\{rest}");
+        unc.as_str()
+    } else {
+        win.strip_prefix(r"\\?\").unwrap_or(win)
+    };
     for prefix in [r"\\wsl$\", r"\\wsl.localhost\"] {
         if let Some(rest) = win.strip_prefix(prefix) {
             let after = rest.split_once('\\').map(|(_, p)| p).unwrap_or("");
@@ -57,6 +65,13 @@ mod tests {
         for p in [r"C:\x\y z", r"E:\deep\er\path"] {
             assert_eq!(from_wsl(&to_wsl(p), "Ubuntu"), p);
         }
+    }
+
+    /// Tauri의 리소스 경로는 윈도우에서 `\\?\D:\…`(확장 경로)로 온다 — 내장 tmux 복사가 이 경로로 실패했다(e2e 실측)
+    #[test]
+    fn wsl_path_extended_prefix() {
+        assert_eq!(to_wsl(r"\\?\D:\a\Anvil\target\debug\bin"), "/mnt/d/a/Anvil/target/debug/bin");
+        assert_eq!(to_wsl(r"\\?\UNC\wsl$\Ubuntu\home\me"), "/home/me");
     }
 
     #[test]

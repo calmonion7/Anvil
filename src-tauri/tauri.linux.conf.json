@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/bin-linux/tmux-x86_64": "bin/tmux"
+    }
+  }
+}

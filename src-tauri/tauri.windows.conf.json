@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/bin-linux/tmux-x86_64": "bin/tmux-x86_64",
+      "resources/bin-linux/tmux-aarch64": "bin/tmux-aarch64"
+    }
+  }
+}
