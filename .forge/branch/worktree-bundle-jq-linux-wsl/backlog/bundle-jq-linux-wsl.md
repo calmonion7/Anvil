@@ -26,7 +26,7 @@
   6. 검증 = 단위 테스트 + Linux e2e 컨테이너(CI `e2e-desktop`) + Windows ARM VM(SSH 자동화, 사람은 화면 판단만).
   7. 0.1.8로 올려 배포한다(다섯 곳 + `docs/releases/v0.1.8.md`). 머지하면 release.yml이 자동으로 릴리스한다.
   8. TDD on.
-- 브랜치·머지: 브랜치 `worktree-bundle-jq-linux-wsl`(원장 `fu-b9bbeaeaac9c` → taken 17 커밋 포함)에서 이어 작업하고, 원장 변경과 이 작업을 같은 PR로 한 번에 머지한다. PR 번호는 원장 커밋을 push할 때 만든 드래프트 PR이다(핸드오프에 적음).
+- 브랜치·머지: 브랜치 `worktree-bundle-jq-linux-wsl`(원장 `fu-b9bbeaeaac9c` → taken 17 커밋 포함)에서 이어 작업하고, 원장 변경과 이 작업을 같은 PR로 한 번에 머지한다. 드래프트 PR #55.
 - 고칠 곳(찾기 명령 `git grep -n -w jq -- src-tauri/src src-tauri/tauri.*.json scripts README.md e2e-desktop`로 확인, 2026-10-28):
   - `src-tauri/tauri.linux.conf.json`, `src-tauri/tauri.windows.conf.json` — jq 리소스 추가
   - `src-tauri/src/session.rs:62` `ANVIL_PATH_SH`, `:709` 그 테스트, 주석 `:64`·`:88`·`:843`("macOS는 jq")
