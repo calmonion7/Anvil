@@ -98,10 +98,21 @@
   /** 준비물이 빠진 동안 세션을 여는 버튼은 끈다 */
   let depsBlocked = $derived(deps?.message ? t("먼저 위 띠에서 준비물을 설치하세요", "Install the prerequisites in the band above first") : null);
   let needLogin = $state(false);
-  const checkDeps = () =>
-    invoke<DepsStatus>("deps_status")
-      .then((d) => (deps = d))
-      .catch(() => {});
+  /** 확인마다 순번을 매겨 가장 최근 확인의 응답만 반영한다 — WSL은 확인 한 번에 수십 초라 늦은 옛 응답이 새 결과를 덮을 수 있다 */
+  let depsSeq = 0;
+  let depsChecking = $state(false);
+  const checkDeps = () => {
+    const seq = ++depsSeq;
+    depsChecking = true;
+    return invoke<DepsStatus>("deps_status")
+      .then((d) => {
+        if (seq === depsSeq) deps = d;
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (seq === depsSeq) depsChecking = false;
+      });
+  };
   /** [다시 확인] 전용 — 직전 [설치] 결과를 지운다. [설치] 직후 재확인(checkDeps)에선 결과가 남아야 하므로 여기서만 */
   function recheckDeps() {
     depsSteps = [];
@@ -500,11 +511,11 @@
     {#if deps?.message || depsSteps.some((s) => s.outcome !== "ok")}
       <div class="band top">
         <span class="b"><span class="crit">✕</span> {deps?.message ? t("준비물이 빠졌습니다", "Missing prerequisites") : t("일부 설치 실패", "Some installs failed")}</span>
-        <span class="ink2 msg">{#each linkParts(depsError || deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}</span>
+        <span class="ink2 msg">{#if depsChecking}{t("확인 중…", "Checking…")}{:else}{#each linkParts(depsError || deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
         <span class="sp"></span>
-        <button class="btn sm quiet" disabled={depsInstalling} onclick={recheckDeps}>{t("다시 확인", "Check again")}</button>
+        <button class="btn sm quiet" disabled={depsInstalling || depsChecking} onclick={recheckDeps}>{t("다시 확인", "Check again")}</button>
         {#if deps?.installable}
-          <button class="btn sm" disabled={depsInstalling} onclick={installDeps}>
+          <button class="btn sm" disabled={depsInstalling || depsChecking} onclick={installDeps}>
             {depsInstalling ? t("설치 중…", "Installing…") : depsError || depsSteps.length ? t("다시 시도", "Retry") : t("설치", "Install")}
           </button>
         {/if}
