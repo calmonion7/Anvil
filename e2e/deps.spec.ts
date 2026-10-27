@@ -80,6 +80,68 @@ test("macOS는 claude 설치 뒤 [로그인] 버튼이 그대로 보인다", asy
   await expect(page.locator(".band.top", { hasText: "claude CLI 설치됨", hasNot: page.locator(".crit") }).getByRole("button", { name: "로그인" })).toBeVisible();
 });
 
+// v0.1.7 — 확인이 도는 동안 띠는 '확인 중…'을 보이고 옛 '필요: …'를 숨기며 두 버튼을 끈다
+const hold = (page: import("@playwright/test").Page) => page.evaluate(() => ((window as any).__depsHold = true));
+const answer = (page: import("@playwright/test").Page, i: number, d: unknown) =>
+  page.evaluate(([i, d]) => (window as any).__depsResolve[i as number](d), [i, d] as const);
+
+test("[설치] 뒤 확인 응답 전에는 '확인 중…'만 보이고 버튼이 꺼진다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript((deps) => {
+    const w = window as any;
+    w.__deps = deps;
+    w.__depsInstall = [{ need: "tmux", label: "tmux", outcome: "ok", detail: null }];
+  }, missing);
+  await page.goto("/");
+  const band = page.locator(".band.top");
+  await expect(band).toContainText("필요: tmux");
+  await hold(page);
+  await band.getByRole("button", { name: "설치" }).click();
+  await expect(band).toContainText("확인 중…");
+  await expect(band).not.toContainText("필요: tmux");
+  await expect(band.getByRole("button", { name: "다시 확인" })).toBeDisabled();
+  await expect(band.getByRole("button", { name: "다시 시도" })).toBeDisabled();
+  await answer(page, 0, { needs: [], message: null, installable: true });
+  await expect(band).toHaveCount(0);
+});
+
+test("[다시 확인]도 응답 전에는 '확인 중…'을 보인다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript((deps) => ((window as any).__deps = deps), missing);
+  await page.goto("/");
+  const band = page.locator(".band.top");
+  await expect(band).toContainText("필요: tmux");
+  await hold(page);
+  await band.getByRole("button", { name: "다시 확인" }).click();
+  await expect(band).toContainText("확인 중…");
+  await expect(band).not.toContainText("필요: tmux");
+  await expect(band.getByRole("button", { name: "다시 확인" })).toBeDisabled();
+  await expect(band.getByRole("button", { name: "설치" })).toBeDisabled();
+  await answer(page, 0, { needs: ["git"], message: "필요: git", installable: true });
+  await expect(band).toContainText("필요: git");
+  await expect(band).not.toContainText("확인 중…");
+});
+
+test("먼저 시작한 확인이 늦게 와도 나중 확인의 결과가 남는다", async ({ page }) => {
+  await mockIpc(page);
+  await page.addInitScript((deps) => ((window as any).__deps = deps), missing);
+  await page.goto("/");
+  const band = page.locator(".band.top");
+  await expect(band).toContainText("필요: tmux");
+  await hold(page);
+  await band.getByRole("button", { name: "다시 확인" }).click(); // 확인 0
+  // 버튼은 꺼져 있으니 다른 확인 경로(설정 > 언어 변경)로 두 번째 확인을 띄운다
+  await page.getByRole("button", { name: "⚙ 설정" }).click();
+  await page.getByLabel("언어").selectOption("ko"); // 확인 1
+  await expect.poll(() => page.evaluate(() => (window as any).__depsResolve.length)).toBe(2);
+  await answer(page, 1, { needs: ["git"], message: "필요: 새 결과", installable: true });
+  await expect(band).toContainText("필요: 새 결과");
+  await answer(page, 0, { needs: ["tmux"], message: "필요: 옛 결과", installable: true });
+  await page.waitForTimeout(100);
+  await expect(band).toContainText("필요: 새 결과");
+  await expect(band).not.toContainText("필요: 옛 결과");
+});
+
 // v0.1.5 — [세션 열기] 직후 터미널에 초점이 가 바로 타이핑된다(첫 실행 신뢰 질문)
 test("[세션 열기] 뒤 터미널에 초점이 간다", async ({ page }) => {
   await mockIpc(page);

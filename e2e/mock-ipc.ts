@@ -68,10 +68,14 @@ export async function mockIpc(page: Page) {
               listeners.push({ event: args.event, handler: args.handler });
               return args.handler;
             case "session_models": return {};
+            case "model_settings": return {};
             case "session_fill": return `${args.project}-${args.role}`;
             case "read_doc": return `# 문서 ${args.rel}`;
             // 준비물 — 기본은 null(띠 없음). 검사가 __deps·__depsInstall·__depsInstallError를 심으면 그 값.
-            case "deps_status": return w.__deps ?? null;
+            // __depsHold를 켜면 확인 응답을 붙잡아 두고, 검사가 __depsResolve[i](값)으로 i번째 확인을 푼다.
+            case "deps_status":
+              if (w.__depsHold) return new Promise((r) => (w.__depsResolve ??= []).push(r));
+              return w.__deps ?? null;
             case "deps_install":
               if (w.__depsInstallError) throw w.__depsInstallError;
               return w.__depsInstall ?? [];
