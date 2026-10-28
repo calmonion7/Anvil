@@ -24,7 +24,8 @@ describe("Linux 깨끗한 PC", () => {
   step("⑤ [세션 열기] → 터미널에 claude 첫 화면", openSession);
   step("⑥ 시스템 jq 없이도 내장 jq로 상태줄 래퍼가 모델을 기록하고 원래 상태줄을 그대로 보인다", () => {
     const sys = "/usr/local/bin:/usr/bin:/bin";
-    assert.equal(spawnSync("sh", ["-c", "command -v jq"], { env: { PATH: sys } }).status, 1, "시스템에 jq가 없어야 한다");
+    // dash의 command -v는 못 찾으면 127(CI 실측)이라 0이 아닌지만 본다
+    assert.notEqual(spawnSync("sh", ["-c", "command -v jq"], { env: { PATH: sys } }).status, 0, "시스템에 jq가 없어야 한다");
     const env = { ...process.env, PATH: `${join(dirname(process.env.ANVIL_BIN), "bin")}:${sys}`, ANVIL_SESSION: "e2e-sl" };
     assert.equal(execSync("jq --version", { env }).toString().trim(), "jq-1.8.1");
 
