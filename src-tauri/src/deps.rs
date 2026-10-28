@@ -1,8 +1,8 @@
 //! 준비물(node 22 이상 · claude CLI · forge 플러그인) 확인과 설치. 설치는 사용자가 [설치]를 누를 때만, 세 OS 모두 관리자 권한 없이.
-//! tmux는 세 OS 모두 앱에 내장돼 준비물이 아니다(ADR 261024-202909, 261025-163349). Windows는 WSL 안에서 확인·설치하고,
+//! tmux·jq는 세 OS 모두 앱에 내장돼 준비물이 아니다(ADR 261024-202909, 261025-163349). Windows는 WSL 안에서 확인·설치하고,
 //! WSL과 배포판은 준비물보다 먼저 있어야 하는 바탕이라 안내만 한다.
 
-use crate::session::{bundled_bin, hidden_command, login_path, run_path, ANVIL_PATH_SH, WSL_TMUX};
+use crate::session::{bundled_bin, hidden_command, login_path, run_path, ANVIL_PATH_SH, JQ_VERSION, WSL_JQ, WSL_TMUX};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
@@ -280,6 +280,15 @@ fn wsl_tmux_copy_cmd(src: &str) -> String {
     )
 }
 
+/// tmux에 이어 배포판 아키텍처의 내장 jq를 놓는다 — 없거나 버전이 다를 때만 tmp→mv로 바꾼다. 실패하면 0이 아닌 종료 코드.
+fn wsl_bin_copy_cmd(src: &str) -> String {
+    let q = format!("'{}'", src.replace('\'', r"'\''"));
+    format!(
+        "{}; t=$?; [ \"$(\"{WSL_JQ}\" --version 2>/dev/null)\" = \"jq-{JQ_VERSION}\" ] || {{ mkdir -p \"$(dirname \"{WSL_JQ}\")\" && cp {q}/jq-$(uname -m) \"{WSL_JQ}.tmp\" && chmod 755 \"{WSL_JQ}.tmp\" && mv \"{WSL_JQ}.tmp\" \"{WSL_JQ}\"; }} && exit $t",
+        wsl_tmux_copy_cmd(src)
+    )
+}
+
 /// 준비물 확인용 실행 — 성공하면 표준 출력. Windows는 WSL 로그인 셸 안에서 Anvil PATH로.
 fn probe_out(os: Os, prog: &str, args: &[&str]) -> Option<String> {
     let out = if os == Os::Wsl {
@@ -321,12 +330,12 @@ pub fn status() -> DepsStatus {
         if let Some(m) = wsl_missing(probe_host) {
             return DepsStatus { needs: vec![], message: Some(m.to_string()), installable: false, platform };
         }
-        // 세션이 쓸 tmux를 먼저 놓아 둔다(ADR 261025-163349). 실패는 세션 열기에서야 드러나니 로그로 남긴다.
+        // 세션이 쓸 tmux와 상태줄이 쓸 jq를 먼저 놓아 둔다(ADR 261025-163349). 실패는 세션 열기에서야 드러나니 로그로 남긴다.
         match bundled_bin() {
             Some(dir) => {
-                let out = hidden_command("wsl.exe").args(wsl_argv(&wsl_tmux_copy_cmd(&crate::wsl::to_wsl(&dir.to_string_lossy())))).output();
+                let out = hidden_command("wsl.exe").args(wsl_argv(&wsl_bin_copy_cmd(&crate::wsl::to_wsl(&dir.to_string_lossy())))).output();
                 if let Some(o) = out.ok().filter(|o| !o.status.success()) {
-                    eprintln!("내장 tmux를 WSL에 복사하지 못함: {}", String::from_utf8_lossy(&o.stderr).trim());
+                    eprintln!("내장 tmux·jq를 WSL에 복사하지 못함: {}", String::from_utf8_lossy(&o.stderr).trim());
                 }
             }
             None => eprintln!("내장 tmux 폴더(리소스 bin/tmux-x86_64)를 찾지 못함"),
@@ -654,6 +663,52 @@ mod tests {
         assert!(c.contains("'/mnt/c/Program Files/Anvil/bin'/tmux-$(uname -m)") || c.contains("'/mnt/c/Program Files/Anvil/bin/tmux-'\"$(uname -m)\""), "{c}");
         assert!(c.contains(crate::session::WSL_TMUX) && crate::session::WSL_TMUX.ends_with("tmux-3.6a"), "{c}");
         assert!(c.starts_with(&format!("[ -x \"{}\" ] ||", crate::session::WSL_TMUX)), "이미 있으면 건드리지 않는다: {c}");
+    }
+
+    /// WSL에는 tmux와 함께 아키텍처에 맞는 내장 jq도 놓는다 — 없거나 버전이 다를 때만 tmp→mv로 바꾼다
+    #[test]
+    fn deps_wsl_copies_bundled_jq_when_missing_or_other_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (src, home) = (tmp.path().join("src dir"), tmp.path().join("home"));
+        std::fs::create_dir_all(&src).unwrap();
+        let arch = String::from_utf8(Command::new("uname").arg("-m").output().unwrap().stdout).unwrap();
+        let fake = |name: &str, version: &str| {
+            let p = src.join(format!("{name}-{}", arch.trim()));
+            std::fs::write(&p, format!("#!/bin/sh\necho {version}\n")).unwrap();
+            std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        };
+        fake("tmux", "tmux 3.6a");
+        fake("jq", &format!("jq-{}", crate::session::JQ_VERSION));
+        let run = || {
+            let cmd = wsl_bin_copy_cmd(&src.to_string_lossy());
+            assert!(Command::new("bash").args(["-c", &cmd]).env("HOME", &home).status().unwrap().success(), "{cmd}");
+        };
+        let jq = home.join(".local/share/anvil/bin/jq");
+        let version = || String::from_utf8(Command::new(&jq).arg("--version").output().unwrap().stdout).unwrap();
+
+        run();
+        assert!(home.join(".local/share/anvil/bin/tmux-3.6a").is_file(), "tmux도 그대로 놓는다");
+        assert_eq!(version().trim(), "jq-1.8.1");
+        assert!(!home.join(".local/share/anvil/bin/jq.tmp").exists(), "tmp는 mv로 사라진다");
+
+        std::fs::write(&jq, "#!/bin/sh\necho jq-1.7.1\n").unwrap();
+        run();
+        assert_eq!(version().trim(), "jq-1.8.1", "다른 버전이면 바꾼다");
+
+        fake("jq", "jq-1.8.1-새원본");
+        run();
+        assert_eq!(version().trim(), "jq-1.8.1", "버전이 맞으면 건드리지 않는다");
+    }
+
+    /// Linux 번들에는 jq(x86_64), Windows 번들에는 WSL에 복사할 두 아키텍처의 jq가 들어간다
+    #[test]
+    fn bundles_carry_jq_for_linux_and_wsl() {
+        let res = |conf: &str| serde_json::from_str::<serde_json::Value>(conf).unwrap()["bundle"]["resources"].clone();
+        let linux = res(include_str!("../tauri.linux.conf.json"));
+        let windows = res(include_str!("../tauri.windows.conf.json"));
+        assert_eq!(linux["resources/bin-linux/jq-x86_64"], "bin/jq", "{linux}");
+        assert_eq!(windows["resources/bin-linux/jq-x86_64"], "bin/jq-x86_64", "{windows}");
+        assert_eq!(windows["resources/bin-linux/jq-aarch64"], "bin/jq-aarch64", "{windows}");
     }
 
     #[test]

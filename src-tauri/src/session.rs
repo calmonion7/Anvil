@@ -58,11 +58,15 @@ static BUNDLED_BIN: OnceLock<PathBuf> = OnceLock::new();
 pub const TMUX_VERSION: &str = "3.6a";
 /// WSL에 복사해 두는 내장 tmux. 버전이 이름에 있어 업데이트가 설치 폴더를 바꿔도 떠 있는 서버의 실행 파일은 그대로다(ADR 261025-163349).
 pub const WSL_TMUX: &str = "$HOME/.local/share/anvil/bin/tmux-3.6a";
-/// WSL 셸에서 Anvil PATH(Anvil 전용 node → ~/.local/bin)를 앞에 두는 앞머리 — run_path()의 WSL판.
-pub const ANVIL_PATH_SH: &str = r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$PATH"; "#;
+/// 앱에 내장한 jq 버전 — 올릴 때는 scripts/build-tmux.sh·build-tmux-linux.sh를 다시 돌린다.
+pub const JQ_VERSION: &str = "1.8.1";
+/// WSL에 복사해 두는 내장 jq. 금방 끝나는 프로세스라 이름에 버전을 넣지 않고, 버전이 다르면 바꿔 놓는다.
+pub const WSL_JQ: &str = "$HOME/.local/share/anvil/bin/jq";
+/// WSL 셸에서 Anvil PATH(Anvil 전용 node → ~/.local/bin → 내장 폴더(상태줄의 jq))를 앞에 두는 앞머리 — run_path()의 WSL판.
+pub const ANVIL_PATH_SH: &str = r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$HOME/.local/share/anvil/bin:$PATH"; "#;
 
-/// 앱에 내장된 tmux(·macOS는 jq) 폴더(ADR 261024-202909, 261025-163349). 앱 시작 때 리소스의 `bin/`에 tmux가 있으면 등록한다.
-/// 윈도우는 WSL에 복사할 아키텍처별 원본(tmux-x86_64·tmux-aarch64)이 있다.
+/// 앱에 내장된 tmux·jq 폴더(ADR 261024-202909, 261025-163349). 앱 시작 때 리소스의 `bin/`에 tmux가 있으면 등록한다.
+/// 윈도우는 WSL에 복사할 아키텍처별 원본(tmux-x86_64·tmux-aarch64, jq-x86_64·jq-aarch64)이 있다.
 pub fn set_bundled_bin(dir: PathBuf) {
     let tmux = if cfg!(windows) { "tmux-x86_64" } else { "tmux" };
     if dir.join(tmux).is_file() {
@@ -706,7 +710,10 @@ mod tests {
         assert_eq!(anvil_path("/home/u", None, "/usr/bin:/bin"), "/home/u/.local/share/anvil/node/bin:/home/u/.local/bin:/usr/bin:/bin");
         let bin = Path::new("/opt/Anvil/bin");
         assert!(anvil_path("/home/u", Some(bin), "/usr/bin").starts_with("/home/u/.local/share/anvil/node/bin:/home/u/.local/bin:/opt/Anvil/bin:"));
-        assert!(ANVIL_PATH_SH.starts_with(r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$PATH"; "#), "{ANVIL_PATH_SH}");
+        assert!(
+            ANVIL_PATH_SH.starts_with(r#"export PATH="$HOME/.local/share/anvil/node/bin:$HOME/.local/bin:$HOME/.local/share/anvil/bin:$PATH"; "#),
+            "WSL도 내장 폴더(jq)가 ~/.local/bin 바로 뒤: {ANVIL_PATH_SH}"
+        );
     }
 
     /// 윈도우: tmux는 WSL에 복사해 둔 버전 이름의 내장본을 셸 없이(-e) 부른다 — 인자가 다시 쪼개지지 않게

@@ -13,7 +13,7 @@ useradd -m -s /bin/bash -u "$(stat -c %u /work)" tester
 echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester
 out="/work/e2e-desktop/out/linux-$SCENARIO"
 mkdir -p "$out" && chown tester "$out"
-{ echo "== 컨테이너 =="; cat /etc/os-release | head -2; for p in node tmux claude curl git; do printf '%s: ' "$p"; command -v "$p" || echo 없음; done; } > "$out/env.log"
+{ echo "== 컨테이너 =="; cat /etc/os-release | head -2; for p in node tmux jq claude curl git; do printf '%s: ' "$p"; command -v "$p" || echo 없음; done; } > "$out/env.log"
 
 # env -i: 하네스 node(/opt)가 앱의 PATH로 새지 않게 깨끗한 데스크톱 환경만 준다
 exec runuser -u tester -- env -i HOME=/home/tester USER=tester LOGNAME=tester SHELL=/bin/bash LANG=C.UTF-8 \
