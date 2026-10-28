@@ -23,7 +23,7 @@ tmux 3.6a는 **세 OS 모두 앱에 들어 있어** 따로 설치하지 않는�
 | node 22 이상 | forge 훅(세션 시작·종료 등) 실행 | [설치]가 nodejs.org 공식본을 검증해 받는다(관리자 암호 없음) |
 | **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | [설치]가 `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
 | tmux | 세션 유지 | 앱에 내장 |
-| jq | 세션별 모델 표시 | macOS는 앱에 내장, Linux·WSL은 있으면 쓴다(없으면 모델 표시만 빠진다) |
+| jq | 세션별 모델 표시 · 원래 상태줄 실행 | 앱에 내장 |
 
 forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 

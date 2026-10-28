@@ -12,6 +12,6 @@
 - Windows 콘솔 창 깜빡임을 실제 x64 Windows PC(또는 빠른 VM)에서 사람이 확인 — CREATE_NO_WINDOW는 넣었지만 ARM VM이 느려 판단하지 못했다.
   Evidence: S5에서 사용자 "버벅거려서 잘모르겠음".
 
-<!-- followup: fu-b9bbeaeaac9c | source: win-linux-deps-install-3of3 | task: 15 | date: 2026-10-27 | status: open | taken: - -->
+<!-- followup: fu-b9bbeaeaac9c | source: win-linux-deps-install-3of3 | task: 15 | date: 2026-10-27 | status: taken | taken: 17 -->
 - Linux·WSL에도 jq를 내장할지 — 지금은 있으면 쓰고 없으면 세션별 모델 표시만 빠진다(README에 명시). macOS처럼 정적 jq를 넣으면 준비 없이 모델 표시가 된다.
   Evidence: 상태줄 래퍼가 `command -v jq`일 때만 모델 기록(session.rs STATUSLINE_SCRIPT).

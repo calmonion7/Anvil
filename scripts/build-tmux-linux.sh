@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Linux·WSL용 정적(musl) tmux 를 x86_64·aarch64 로 만들어 src-tauri/resources/bin-linux/ 에 둔다(ADR 261025-163349).
+# Linux·WSL용 정적(musl) tmux 를 x86_64·aarch64 로 만들고 공식 정적 jq 를 받아 src-tauri/resources/bin-linux/ 에 둔다(ADR 261025-163349).
 #   build-tmux-linux.sh      (docker 필요 — 이 맥의 docker 로 alpine 컨테이너에서 빌드)
 # 배포판마다 terminfo 위치가 달라(22.04 /lib/terminfo, 26.04 /usr/share/terminfo) ncurses 를 직접 빌드해
 # 자주 쓰는 항목을 바이너리에 내장하고 세 경로를 모두 찾게 한다. 결과물은 커밋한다 — CI 는 이 스크립트를 돌리지 않는다.
@@ -33,4 +33,10 @@ for plat in amd64 arm64; do
     file "/out/tmux-$(uname -m)"
   '
 done
+
+# jq 는 공식 정적 Linux 바이너리를 받는다(상태줄 래퍼가 쓴다 — macOS 의 build-tmux.sh 와 같은 방식).
+JQ_VER=1.8.1
+curl -fsSL -o "$OUT/jq-x86_64" "https://github.com/jqlang/jq/releases/download/jq-$JQ_VER/jq-linux-amd64"
+curl -fsSL -o "$OUT/jq-aarch64" "https://github.com/jqlang/jq/releases/download/jq-$JQ_VER/jq-linux-arm64"
+chmod 755 "$OUT/jq-x86_64" "$OUT/jq-aarch64"
 ls -l "$OUT"
