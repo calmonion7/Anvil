@@ -32,7 +32,7 @@ minor 3건은 아래 후속후보로 남김.
 4. `npm run check`: 오류 0 → 오류 0 (회귀 방지, 바뀜 없음)
 5. `(cd src-tauri && cargo test)`: 43+27 통과 → 43+27+골든 1 통과 (회귀 방지). `src-tauri/` 변경은 `tests/golden.rs` 추가 하나.
 6. 거절 테스트: 없음 → `server/test/security.test.js` 통과(1번에 포함)
-7. UAT(이 Mac, 사람): 대기
+7. UAT(이 Mac, 사람, 2026-10-30): 대기 → 통과. `npm run build` + `node server/main.js`, Chrome·Safari. ① 폴더 선택 창으로 Anvil 등록 → 보드(백로그 4·최근 완료 17·후속후보 3) ② 계획 세션에서 claude와 한글 대화, 상태 `입력 대기`·상태줄 `Opus 5.5 · high` 기록 ③ 탭을 닫았다 열면 같은 화면 재생 + 탭 제목 `🔔 Anvil` ④ `/forge:fg-ask` 버튼 → 입력창에 Enter 없이 채워짐. 한글 글자 간격은 전환 전과 같은 현상이라 후속후보로 뺐다(아래).
 
 ## Follow-ups
 <!-- followup: fu-f1485aa3da66 | source: node-web-app-1of4 | task: 18 | date: 2026-10-29 | status: open | taken: - -->
@@ -54,3 +54,7 @@ minor 3건은 아래 후속후보로 남김.
 <!-- followup: fu-3ab96996279c | source: node-web-app-1of4 | task: 18 | date: 2026-10-29 | status: open | taken: - -->
 - 테스트용 `ANVIL_CLAUDE` 환경변수(claude 대신 띄울 실행 파일)를 운영 서버도 읽는다. 자동 시작(2/4) 환경에서 남겨 둘지, 테스트 전용으로 좁힐지 정할 것.
   Evidence: `server/session.js` S4 보고.
+
+<!-- followup: fu-9c2e41d7a0b3 | source: node-web-app-1of4 | task: 18 | date: 2026-10-30 | status: open | taken: - -->
+- 터미널에서 한글 글자 사이가 벌어져 보인다(`안 녕 하 세 요`). xterm은 한글에 2칸(12px Menlo 기준 ≈14.4px)을 주는데 대체 한글 글꼴의 글자 폭이 그보다 좁다. 2칸 폭에 맞는 한글 고정폭 글꼴(예: D2Coding 웹폰트 동봉)을 쓸지 정할 것.
+  Evidence: UAT 화면(2026-10-30), 같은 xterm 설정을 Playwright Chromium과 WebKit에 그려 둘 다 같은 간격 — 전환 전 설정 그대로라 이번 전환의 회귀는 아님(추론: WebKit ≈ Tauri WKWebView).
