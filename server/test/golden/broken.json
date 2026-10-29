@@ -1,0 +1,45 @@
+{
+  "name": "broken",
+  "path": "<ROOT>",
+  "hasForge": true,
+  "root": {
+    "branch": null,
+    "git": false,
+    "rel": ".forge",
+    "warning": null
+  },
+  "headline": "백로그 2",
+  "active": null,
+  "loopState": null,
+  "backlog": [
+    {
+      "task": 7,
+      "slug": "a-good-plan",
+      "title": "멀쩡한 계획",
+      "priority": "high",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/a-good-plan.md"
+    },
+    {
+      "task": null,
+      "slug": "old-plan",
+      "title": "task 번호가 없는 옛 계획 — 번호는 —로 보인다",
+      "priority": "medium",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/old-plan.md"
+    }
+  ],
+  "executed": [],
+  "done": [],
+  "doneTotal": 0,
+  "followups": [],
+  "errors": [
+    {
+      "path": ".forge/backlog/x.md",
+      "message": "forge-slug 마커가 없습니다. 이 파일만 건너뛰었습니다."
+    }
+  ],
+  "drivingSession": null
+}

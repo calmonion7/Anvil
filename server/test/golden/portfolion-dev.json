@@ -1,0 +1,67 @@
+{
+  "name": "portfolion",
+  "path": "<ROOT>",
+  "hasForge": true,
+  "root": {
+    "branch": "dev",
+    "git": true,
+    "rel": ".forge/branch/dev",
+    "warning": null
+  },
+  "headline": "백로그 0",
+  "active": null,
+  "loopState": null,
+  "backlog": [],
+  "executed": [],
+  "done": [
+    {
+      "task": 390,
+      "slug": "listener-resume-and-enrich-run-check",
+      "title": "fire 리스너 재기동 이어받기 + enrich 회차 완료 데이터 대조 스크립트",
+      "date": "2026-10-17",
+      "verified": "yes",
+      "retro": ".forge/branch/dev/retro/261017-004500-listener-resume-and-enrich-run-check.md",
+      "path": ".forge/branch/dev/done/261017-003059-listener-resume-and-enrich-run-check/plan.md"
+    },
+    {
+      "task": 389,
+      "slug": "routine-fire-claude-binary-pin",
+      "title": "루틴 fire 리스너가 깨진 npm `claude`를 실행해 이틀째 전 회차 실패 — 네이티브 절대경로 고정 + fire마다 사전 점검",
+      "date": "2026-10-16",
+      "verified": "yes",
+      "retro": ".forge/branch/dev/retro/261016-234500-routine-fire-claude-binary-pin.md",
+      "path": ".forge/branch/dev/done/261016-234717-routine-fire-claude-binary-pin/plan.md"
+    },
+    {
+      "task": 320,
+      "slug": "tech-related-composition-hierarchy",
+      "title": "「연관 기술」 섹션을 구성 계층 + 지분 램프로 개편하고 경계 칩을 발행물로 잇는다",
+      "date": "2026-08-21",
+      "verified": "yes",
+      "retro": ".forge/retro/260821-074501-tech-related-composition-hierarchy.md",
+      "path": ".forge/done/260821-022959-tech-related-composition-hierarchy/plan.md"
+    },
+    {
+      "task": 296,
+      "slug": "tech-report-outline-mobile-table",
+      "title": "선도기술 리포트 상세 — 펼치기 전면 제거 + 전역 목차 + 업체 표 모바일 대응(가로 스크롤 0)",
+      "date": "2026-08-12",
+      "verified": "yes",
+      "retro": ".forge/retro/260812-160701-tech-report-outline-mobile-table.md",
+      "path": ".forge/done/260812-090736-tech-report-outline-mobile-table/plan.md"
+    },
+    {
+      "task": 140,
+      "slug": "fomc-coverage-guard",
+      "title": "FOMC 날짜 커버리지 가드 — 소진 임박 시 배치 허브에 경고",
+      "date": "2026-07-04",
+      "verified": "yes",
+      "retro": ".forge/retro/2026-07-23-fomc-coverage-guard.md",
+      "path": ".forge/done/2026-07-04-fomc-coverage-guard/plan.md"
+    }
+  ],
+  "doneTotal": 5,
+  "followups": [],
+  "errors": [],
+  "drivingSession": null
+}

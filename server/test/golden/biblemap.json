@@ -1,0 +1,142 @@
+{
+  "name": "biblemap",
+  "path": "<ROOT>",
+  "hasForge": true,
+  "root": {
+    "branch": "main",
+    "git": true,
+    "rel": ".forge",
+    "warning": null
+  },
+  "headline": "루프 정지",
+  "active": {
+    "task": 362,
+    "slug": "scene-engedi-text-dark-light",
+    "title": "엔게디 장면 문구 수리 — 굴 벽의 색 낱말로 「굴 어둠·빛」 무너짐을 고친다",
+    "stage": "run",
+    "running": false,
+    "verified": "pending",
+    "retro": "pending",
+    "inLoop": true,
+    "docs": [
+      {
+        "label": "plan",
+        "path": ".forge/plan.md"
+      },
+      {
+        "label": "run",
+        "path": ".forge/run.md"
+      },
+      {
+        "label": "STATUS",
+        "path": ".forge/STATUS.md"
+      },
+      {
+        "label": "loop",
+        "path": ".forge/loop.md"
+      }
+    ]
+  },
+  "loopState": {
+    "goal": "엔게디 장면 문구 수리(#362)를 사람 판정까지 무인으로 민다",
+    "wall": "unverifiable-uat (C5)",
+    "replanRound": 0,
+    "replanCap": 3,
+    "checks": [
+      {
+        "id": "C1",
+        "text": "8시드 생성 — `ls .forge/reports/loop-362/*.png | wc -l` → 16",
+        "result": "unknown"
+      },
+      {
+        "id": "C2",
+        "text": "`python3 scripts/canon/check_scenes.py` 종료 0",
+        "result": "pass"
+      },
+      {
+        "id": "C3",
+        "text": "회귀 가드 — `python3 judge_scene.py v42` 종료 0",
+        "result": "pass"
+      },
+      {
+        "id": "C4",
+        "text": "무너짐 ≥ 7/8 — `python3 scripts/canon/count_collapse.py loop-362` 종료 0",
+        "result": "fail"
+      },
+      {
+        "id": "C5",
+        "text": "사람 판정 열 8칸 채움 — `grep -c '| ✅' notes/REVIEW-362.md` ≥ 8",
+        "result": "fail"
+      },
+      {
+        "id": "C6",
+        "text": "판정 요약을 run.md에 기록",
+        "result": "unknown"
+      }
+    ],
+    "path": ".forge/loop.md"
+  },
+  "backlog": [
+    {
+      "task": 363,
+      "slug": "scene-prompt-512-truncation",
+      "title": "한 장 프롬프트 512토큰 잘림 — 검사로 막고, 파생 중복을 고쳐 엔게디를 512 안에 넣는다",
+      "priority": "medium",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/scene-prompt-512-truncation.md"
+    },
+    {
+      "task": 354,
+      "slug": "scene-video-model-pilot",
+      "title": "로컬 영상 모델 설치·시험 — 장면 그림 한 장을 3초 영상으로(Wan 2.2 TI2V-5B·LTX-2.3, 둘 다 MLX)",
+      "priority": "medium",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/scene-video-model-pilot.md"
+    },
+    {
+      "task": 355,
+      "slug": "cast-life-stage-split",
+      "title": "인물 생애 단계 분할과 기존 값 교정 — 다윗·솔로몬을 나이대별 id로 나누고, 1/2 판정이 찾은 기존 결함(오인용 소품 등)을 고친다",
+      "priority": "low",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/cast-life-stage-split.md"
+    },
+    {
+      "task": 350,
+      "slug": "scene-face-id-judge",
+      "title": "얼굴 자동 판정자(얼굴 인식 임베딩)를 이미 모은 사람 라벨로 교정 — 사람 거르기를 기계가 대신할 수 있는가",
+      "priority": "low",
+      "part": null,
+      "fromLoop": false,
+      "path": ".forge/backlog/scene-face-id-judge.md"
+    }
+  ],
+  "executed": [],
+  "done": [
+    {
+      "task": 361,
+      "slug": "scene-engedi-edit-costume",
+      "title": "엔게디 「무너짐」 수리 — 정본 참조 편집이 장면 옷(사울의 겉옷)을 지우지 않게 하고, 353 바탕 무너짐의 원인을 가린다",
+      "date": "2026-10-17",
+      "verified": "yes",
+      "retro": "skipped",
+      "path": ".forge/done/261017-193655-scene-engedi-edit-costume/plan.md"
+    },
+    {
+      "task": 360,
+      "slug": "scene-cast-ref-edit-lightning",
+      "title": "사울·다윗 정본 참조 편집을 2511 + Lightning 4스텝으로 — 외형 명시 지시문, 상자 안−밖 조작 확인, 카드 크기 같은 인물 판정",
+      "date": "2026-10-17",
+      "verified": "yes",
+      "retro": ".forge/retro/261017-153131-scene-cast-ref-edit-lightning.md",
+      "path": ".forge/done/261017-152757-scene-cast-ref-edit-lightning/plan.md"
+    }
+  ],
+  "doneTotal": 2,
+  "followups": [],
+  "errors": [],
+  "drivingSession": null
+}

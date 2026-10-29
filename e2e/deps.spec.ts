@@ -1,142 +1,66 @@
 import { test, expect } from "@playwright/test";
 import { mockIpc } from "./mock-ipc";
 
-// 준비물 띠 — [다시 확인]은 직전 [설치]의 결과·오류를 지우고 새 상태만 보인다(v0.1.4)
-const missing = { needs: ["tmux"], message: "필요: tmux", installable: true };
+// 준비물 띠 — 빠진 항목과 [다시 확인]만(앱 안 [설치]·[로그인]은 없앴다: 설치는 한 줄 설치 스크립트 몫, ADR 261029-121641)
+const missing = { needs: ["claude"], message: "필요: claude CLI", installable: false };
 
-test("[다시 확인]이 항목별 설치 결과를 지운다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript((deps) => {
-    const w = window as any;
-    w.__deps = deps;
-    w.__depsInstall = [{ need: "xcode", label: "개발자 도구", outcome: "started", detail: null }];
-  }, missing);
-  await page.goto("/");
-  const band = page.locator(".band.top");
-  await band.getByRole("button", { name: "설치" }).click();
-  await expect(band.locator("ul.steps")).toContainText("개발자 도구");
-  await band.getByRole("button", { name: "다시 확인" }).click();
-  await expect(band.locator("ul.steps")).toHaveCount(0);
-  await expect(band).toContainText("필요: tmux");
-});
-
-test("[다시 확인]이 설치 오류 문구를 지운다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript((deps) => {
-    const w = window as any;
-    w.__deps = deps;
-    w.__depsInstallError = "설치 스크립트 오류";
-  }, missing);
-  await page.goto("/");
-  const band = page.locator(".band.top");
-  await band.getByRole("button", { name: "설치" }).click();
-  await expect(band).toContainText("설치 스크립트 오류");
-  await band.getByRole("button", { name: "다시 확인" }).click();
-  await expect(band).not.toContainText("설치 스크립트 오류");
-  await expect(band).toContainText("필요: tmux");
-});
-
-// v0.1.5 — node 준비물이 띠에 뜨고 [설치] 결과가 항목별로 보인다
-test("node가 빠지면 띠에 뜨고 [설치] 결과에 node 항목이 보인다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript(() => {
-    const w = window as any;
-    w.__deps = { needs: ["node"], message: "필요: node", installable: true };
-    w.__depsInstall = [{ need: "node", label: "node", outcome: "failed", detail: "shasum 불일치" }];
-  });
+test("node가 빠지면 띠에 뜨고 [설치]·[로그인] 버튼은 없다", async ({ page }) => {
+  const ipc = await mockIpc(page);
+  ipc.deps = { needs: ["node"], message: "필요: node", installable: false, platform: "macos" };
   await page.goto("/");
   const band = page.locator(".band.top");
   await expect(band).toContainText("필요: node");
-  await band.getByRole("button", { name: "설치" }).click();
-  await expect(band.locator("ul.steps")).toContainText("node");
-  await expect(band.locator("ul.steps")).toContainText("shasum 불일치");
+  await expect(band.getByRole("button", { name: "다시 확인" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^(설치|다시 시도|로그인)$/ })).toHaveCount(0);
 });
 
-// v0.1.6 — Linux·WSL은 외부 로그인 창이 없다: claude를 깔면 '세션을 열면 로그인 안내' 문구만, [로그인] 버튼 없음
-test("macOS가 아니면 claude 설치 뒤 로그인 버튼 없이 안내만 보인다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript(() => {
-    const w = window as any;
-    w.__deps = { needs: ["claude"], message: "필요: claude CLI", installable: true, platform: "linux" };
-    w.__depsInstall = [{ need: "claude", label: "claude CLI", outcome: "ok", detail: null }];
-  });
-  await page.goto("/");
-  await page.locator(".band.top").getByRole("button", { name: "설치" }).click();
-  // 준비물 띠의 항목 줄에도 같은 글자가 있어 ✕가 없는 띠(로그인 띠)만
-  const login = page.locator(".band.top", { hasText: "claude CLI 설치됨", hasNot: page.locator(".crit") });
-  await expect(login).toContainText("Anvil에서 세션을 열면 claude가 로그인을 안내합니다");
-  await expect(login.getByRole("button", { name: "로그인" })).toHaveCount(0);
-});
-
-test("macOS는 claude 설치 뒤 [로그인] 버튼이 그대로 보인다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript(() => {
-    const w = window as any;
-    w.__deps = { needs: ["claude"], message: "필요: claude CLI", installable: true, platform: "macos" };
-    w.__depsInstall = [{ need: "claude", label: "claude CLI", outcome: "ok", detail: null }];
-  });
-  await page.goto("/");
-  await page.locator(".band.top").getByRole("button", { name: "설치" }).click();
-  await expect(page.locator(".band.top", { hasText: "claude CLI 설치됨", hasNot: page.locator(".crit") }).getByRole("button", { name: "로그인" })).toBeVisible();
-});
-
-// v0.1.7 — 확인이 도는 동안 띠는 '확인 중…'을 보이고 옛 '필요: …'를 숨기며 두 버튼을 끈다
-const hold = (page: import("@playwright/test").Page) => page.evaluate(() => ((window as any).__depsHold = true));
-const answer = (page: import("@playwright/test").Page, i: number, d: unknown) =>
-  page.evaluate(([i, d]) => (window as any).__depsResolve[i as number](d), [i, d] as const);
-
-test("[설치] 뒤 확인 응답 전에는 '확인 중…'만 보이고 버튼이 꺼진다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript((deps) => {
-    const w = window as any;
-    w.__deps = deps;
-    w.__depsInstall = [{ need: "tmux", label: "tmux", outcome: "ok", detail: null }];
-  }, missing);
+// v0.1.7 — 확인이 도는 동안 띠는 '확인 중…'을 보이고 옛 '필요: …'를 숨기며 버튼을 끈다
+test("[다시 확인] 응답에서 준비물이 다 갖춰지면 띠가 사라진다", async ({ page }) => {
+  const ipc = await mockIpc(page);
+  ipc.deps = missing;
   await page.goto("/");
   const band = page.locator(".band.top");
-  await expect(band).toContainText("필요: tmux");
-  await hold(page);
-  await band.getByRole("button", { name: "설치" }).click();
+  await expect(band).toContainText("필요: claude CLI");
+  ipc.hold();
+  await band.getByRole("button", { name: "다시 확인" }).click();
   await expect(band).toContainText("확인 중…");
-  await expect(band).not.toContainText("필요: tmux");
+  await expect(band).not.toContainText("필요: claude CLI");
   await expect(band.getByRole("button", { name: "다시 확인" })).toBeDisabled();
-  await expect(band.getByRole("button", { name: "다시 시도" })).toBeDisabled();
-  await answer(page, 0, { needs: [], message: null, installable: true });
+  ipc.pending[0]({ needs: [], message: null, installable: false });
   await expect(band).toHaveCount(0);
 });
 
 test("[다시 확인]도 응답 전에는 '확인 중…'을 보인다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript((deps) => ((window as any).__deps = deps), missing);
+  const ipc = await mockIpc(page);
+  ipc.deps = missing;
   await page.goto("/");
   const band = page.locator(".band.top");
-  await expect(band).toContainText("필요: tmux");
-  await hold(page);
+  await expect(band).toContainText("필요: claude CLI");
+  ipc.hold();
   await band.getByRole("button", { name: "다시 확인" }).click();
   await expect(band).toContainText("확인 중…");
-  await expect(band).not.toContainText("필요: tmux");
+  await expect(band).not.toContainText("필요: claude CLI");
   await expect(band.getByRole("button", { name: "다시 확인" })).toBeDisabled();
-  await expect(band.getByRole("button", { name: "설치" })).toBeDisabled();
-  await answer(page, 0, { needs: ["git"], message: "필요: git", installable: true });
+  ipc.pending[0]({ needs: ["git"], message: "필요: git", installable: false });
   await expect(band).toContainText("필요: git");
   await expect(band).not.toContainText("확인 중…");
 });
 
 test("먼저 시작한 확인이 늦게 와도 나중 확인의 결과가 남는다", async ({ page }) => {
-  await mockIpc(page);
-  await page.addInitScript((deps) => ((window as any).__deps = deps), missing);
+  const ipc = await mockIpc(page);
+  ipc.deps = missing;
   await page.goto("/");
   const band = page.locator(".band.top");
-  await expect(band).toContainText("필요: tmux");
-  await hold(page);
+  await expect(band).toContainText("필요: claude CLI");
+  ipc.hold();
   await band.getByRole("button", { name: "다시 확인" }).click(); // 확인 0
   // 버튼은 꺼져 있으니 다른 확인 경로(설정 > 언어 변경)로 두 번째 확인을 띄운다
   await page.getByRole("button", { name: "⚙ 설정" }).click();
   await page.getByLabel("언어").selectOption("ko"); // 확인 1
-  await expect.poll(() => page.evaluate(() => (window as any).__depsResolve.length)).toBe(2);
-  await answer(page, 1, { needs: ["git"], message: "필요: 새 결과", installable: true });
+  await expect.poll(() => ipc.pending.length).toBe(2);
+  ipc.pending[1]({ needs: ["git"], message: "필요: 새 결과", installable: false });
   await expect(band).toContainText("필요: 새 결과");
-  await answer(page, 0, { needs: ["tmux"], message: "필요: 옛 결과", installable: true });
+  ipc.pending[0]({ needs: ["claude"], message: "필요: 옛 결과", installable: false });
   await page.waitForTimeout(100);
   await expect(band).toContainText("필요: 새 결과");
   await expect(band).not.toContainText("필요: 옛 결과");
@@ -144,9 +68,9 @@ test("먼저 시작한 확인이 늦게 와도 나중 확인의 결과가 남는
 
 // v0.1.5 — [세션 열기] 직후 터미널에 초점이 가 바로 타이핑된다(첫 실행 신뢰 질문)
 test("[세션 열기] 뒤 터미널에 초점이 간다", async ({ page }) => {
-  await mockIpc(page);
+  const ipc = await mockIpc(page);
   await page.goto("/");
   await page.locator(".term-plan").getByRole("button", { name: "세션 열기" }).click();
-  await page.evaluate(() => (window as any).__emit("sessions", { "/p/alpha-plan": { state: "idle", sessionId: null, alive: true } }));
+  await ipc.emit("sessions", { "/p/alpha-plan": { state: "idle", sessionId: null, alive: true } });
   await expect(page.locator(".term-plan .xterm-helper-textarea")).toBeFocused();
 });

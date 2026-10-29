@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, WebSocketRoute } from "@playwright/test";
 
 /** 보드 검사용 프로젝트 둘 — 목록이 찬 것(alpha)과 빈 것(empty) */
 const alpha = {
@@ -32,60 +32,95 @@ const empty = {
 
 export { alpha };
 
-/** window.__TAURI_INTERNALS__를 심어 invoke를 가로챈다. 호출 기록은 window.__calls. */
-export async function mockIpc(page: Page) {
-  await page.addInitScript(
-    ({ projects }) => {
-      const w = window as any;
-      let cb = 0;
-      w.__calls = [];
-      // 이벤트 주입: listen이 등록한 콜백을 __emit(event, payload)로 부른다.
-      const cbs: Record<number, (e: any) => void> = {};
-      const listeners: { event: string; handler: number }[] = [];
-      w.__sessions = {};
-      w.__emit = (event: string, payload: any) => {
-        if (event === "sessions") w.__sessions = payload; // 5초 폴링도 같은 값을 보게
-        listeners.filter((l) => l.event === event).forEach((l) => cbs[l.handler]?.({ event, id: l.handler, payload }));
-      };
-      w.localStorage.setItem("anvil.selected", "/p/alpha");
-      w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-      w.__TAURI_INTERNALS__ = {
-        transformCallback: (fn: (e: any) => void) => {
-          cbs[++cb] = fn;
-          return cb;
-        },
-        unregisterCallback() {},
-        convertFileSrc: (s: string) => s,
-        metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
-        async invoke(cmd: string, args: any) {
-          w.__calls.push({ cmd, args });
-          switch (cmd) {
-            case "list_projects": return projects;
-            case "session_names": return [`${args.project}-plan`, `${args.project}-run`];
-            case "session_titles": return [["plan", "opus"], ["run", "opus"]];
-            case "session_states": return w.__sessions;
-            case "plugin:event|listen":
-              listeners.push({ event: args.event, handler: args.handler });
-              return args.handler;
-            case "session_models": return {};
-            case "model_settings": return {};
-            case "session_fill": return `${args.project}-${args.role}`;
-            case "read_doc": return `# 문서 ${args.rel}`;
-            // 준비물 — 기본은 null(띠 없음). 검사가 __deps·__depsInstall·__depsInstallError를 심으면 그 값.
-            // __depsHold를 켜면 확인 응답을 붙잡아 두고, 검사가 __depsResolve[i](값)으로 i번째 확인을 푼다.
-            case "deps_status":
-              if (w.__depsHold) return new Promise((r) => (w.__depsResolve ??= []).push(r));
-              return w.__deps ?? null;
-            case "deps_install":
-              if (w.__depsInstallError) throw w.__depsInstallError;
-              return w.__depsInstall ?? [];
-            case "slash_commands":
-              return ["/eli5", "/forge:fg-ask", "/forge:fg-doctor", "/forge:fg-learn", "/forge:fg-next", "/forge:fg-run", "/forge:fg-status"];
-            default: return null;
-          }
-        },
-      };
+export type Ipc = {
+  /** 화면이 부른 명령 기록 */
+  calls: { cmd: string; args: any }[];
+  /** 화면이 웹소켓으로 보낸 메시지(term_* 등) */
+  sent: any[];
+  /** 준비물 확인 응답 — 기본 null(띠 없음) */
+  deps: unknown;
+  /** pick_folder 응답 — 기본 null(취소) */
+  pick: unknown;
+  /** 서버 이벤트를 화면에 보낸다 */
+  emit(event: string, payload: unknown): Promise<void>;
+  /** 서버→화면 웹소켓 메시지 하나(웹소켓이 붙을 때까지 기다린다) */
+  send(msg: unknown): Promise<void>;
+  /** 이후 준비물 확인 응답을 붙잡아 둔다 — `pending[i](값)`으로 i번째 확인을 푼다 */
+  hold(): void;
+  pending: ((v: unknown) => void)[];
+  /** read_doc 응답 — 기본 null(`# 문서 <rel>`) */
+  doc: string | null;
+  /** 웹소켓이 붙은 횟수 */
+  connects: number;
+  /** 서버가 새 토큰으로 다시 뜬 것처럼: 이후 모든 /api는 401, 지금 웹소켓은 끊는다 */
+  restart(): Promise<void>;
+};
+
+/** Node 서버 대신 `/api/*`(page.route)와 `/ws`(page.routeWebSocket)를 가짜로 받는다. 화면 코드에는 검사용 고리가 없다. */
+export async function mockIpc(page: Page): Promise<Ipc> {
+  let sessions: unknown = {};
+  let held = false;
+  let ws: WebSocketRoute | null = null;
+  let unauthorized = false;
+  const ipc: Ipc = {
+    calls: [],
+    sent: [],
+    deps: null,
+    pick: null,
+    pending: [],
+    doc: null,
+    connects: 0,
+    hold: () => (held = true),
+    async restart() {
+      unauthorized = true;
+      await ws?.close();
     },
-    { projects: [alpha, empty] },
-  );
+    emit(event, payload) {
+      if (event === "sessions") sessions = payload; // 5초 폴링도 같은 값을 보게
+      return ipc.send({ type: "event", name: event, payload });
+    },
+    async send(msg) {
+      for (let i = 0; !ws && i < 100; i++) await new Promise((r) => setTimeout(r, 50));
+      ws!.send(JSON.stringify(msg));
+    },
+  };
+  const projects = [alpha, empty];
+
+  async function answer(cmd: string, args: any): Promise<unknown> {
+    switch (cmd) {
+      case "list_projects": return projects;
+      case "add_project": return projects;
+      case "session_names": return [`${args.project}-plan`, `${args.project}-run`];
+      case "session_titles": return [["plan", "opus"], ["run", "opus"]];
+      case "session_states": return sessions;
+      case "session_models": return {};
+      case "model_settings": return {};
+      case "session_fill": return `${args.project}-${args.role}`;
+      case "read_doc": return ipc.doc ?? `# 문서 ${args.rel}`;
+      case "pick_folder": return ipc.pick;
+      case "deps_status":
+        if (held) return new Promise((r) => ipc.pending.push(r));
+        return ipc.deps;
+      case "slash_commands":
+        return ["/eli5", "/forge:fg-ask", "/forge:fg-doctor", "/forge:fg-learn", "/forge:fg-next", "/forge:fg-run", "/forge:fg-status"];
+      default: return null;
+    }
+  }
+
+  await page.addInitScript(() => localStorage.setItem("anvil.selected", "/p/alpha"));
+  await page.route("**/api/*", async (route) => {
+    const cmd = new URL(route.request().url()).pathname.split("/").pop()!;
+    const args = route.request().postDataJSON() ?? {};
+    ipc.calls.push({ cmd, args });
+    if (unauthorized) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) });
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(await answer(cmd, args)) });
+  });
+  await page.routeWebSocket(/\/ws$/, (route) => {
+    ipc.connects++;
+    // 옛 쿠키로는 업그레이드가 401 — 브라우저에는 곧바로 끊긴 연결로만 보인다
+    if (unauthorized) return route.close();
+    ws = route;
+    route.onMessage((m) => ipc.sent.push(JSON.parse(String(m))));
+  });
+  return ipc;
 }

@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { call, on } from "$lib/api";
   import { linkParts } from "$lib/format";
   import { marked } from "marked";
   import { onMount } from "svelte";
@@ -39,9 +36,9 @@
   let names = $state<Record<string, [string, string]>>({});
   /** 프로젝트 경로 → 계획·실행 세션의 [claude 이름, 띄울 때 모델] */
   let titles = $state<Record<string, [SessionTitle, SessionTitle]>>({});
-  /** tmux 세션 이름 → 상태 */
+  /** 세션 이름 → 상태 */
   let sessions = $state<Record<string, SessionState>>({});
-  /** tmux 세션 이름 → 상태줄 래퍼가 남긴 실제 모델·effort */
+  /** 세션 이름 → 상태줄 래퍼가 남긴 실제 모델·effort */
   let models = $state<Record<string, ModelInfo>>({});
   /** 계획↔실행(세로 경계) 비율 · 프로젝트 영역을 레일로 접음 */
   let split = $state(0.5);
@@ -84,27 +81,18 @@
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
-  let newVersion = $state<string | null>(null);
-  let updating = $state(false);
-  let updateError = $state("");
-  // 준비물(tmux · claude CLI · forge) — 빠졌으면 띠, macOS는 [설치]
+  // 준비물(node · claude CLI · forge) — 빠졌으면 띠와 [다시 확인]. 설치는 한 줄 설치 스크립트 몫이다.
   type DepsStatus = { needs: string[]; message: string | null; installable: boolean; platform?: string };
-  type DepsStep = { need: string; label: string; outcome: "ok" | "failed" | "skipped" | "started"; detail: string | null };
   let deps = $state<DepsStatus | null>(null);
-  let depsInstalling = $state(false);
-  let depsError = $state("");
-  /** 직전 [설치]의 항목별 결과 */
-  let depsSteps = $state<DepsStep[]>([]);
   /** 준비물이 빠진 동안 세션을 여는 버튼은 끈다 */
-  let depsBlocked = $derived(deps?.message ? t("먼저 위 띠에서 준비물을 설치하세요", "Install the prerequisites in the band above first") : null);
-  let needLogin = $state(false);
+  let depsBlocked = $derived(deps?.message ? t("먼저 위 띠의 준비물을 갖추세요", "Get the prerequisites in the band above first") : null);
   /** 확인마다 순번을 매겨 가장 최근 확인의 응답만 반영한다 — WSL은 확인 한 번에 수십 초라 늦은 옛 응답이 새 결과를 덮을 수 있다 */
   let depsSeq = 0;
   let depsChecking = $state(false);
   const checkDeps = () => {
     const seq = ++depsSeq;
     depsChecking = true;
-    return invoke<DepsStatus>("deps_status")
+    return call<DepsStatus>("deps_status")
       .then((d) => {
         if (seq === depsSeq) deps = d;
       })
@@ -113,24 +101,6 @@
         if (seq === depsSeq) depsChecking = false;
       });
   };
-  /** [다시 확인] 전용 — 직전 [설치] 결과를 지운다. [설치] 직후 재확인(checkDeps)에선 결과가 남아야 하므로 여기서만 */
-  function recheckDeps() {
-    depsSteps = [];
-    depsError = "";
-    checkDeps();
-  }
-  async function installDeps() {
-    depsInstalling = true;
-    depsError = "";
-    try {
-      depsSteps = await invoke<DepsStep[]>("deps_install");
-      if (depsSteps.some((s) => s.need === "claude" && s.outcome === "ok")) needLogin = true;
-    } catch (e) {
-      depsError = String(e);
-    }
-    depsInstalling = false;
-    checkDeps();
-  }
   // 설정 > 역할별 모델 — 새로 여는 세션부터 적용
   const MODEL_CHOICES = $derived([
     ["default", t("claude 기본값", "claude default")],
@@ -145,7 +115,7 @@
     settingsOpen = true;
     settingsError = "";
     try {
-      modelSettings = await invoke("model_settings");
+      modelSettings = await call("model_settings");
     } catch (e) {
       settingsError = String(e);
     }
@@ -153,7 +123,7 @@
   async function saveModel(role: string, model: string) {
     settingsError = "";
     try {
-      await invoke("set_model_setting", { role, model });
+      await call("set_model_setting", { role, model });
       modelSettings[role] = model;
       const i = role === "plan" ? 0 : 1;
       for (const t of Object.values(titles)) t[i][1] = model;
@@ -167,13 +137,13 @@
   let forgeUpdating = $state(false);
   let forgeUpdateMsg = $state("");
   const checkForgePlugin = () =>
-    invoke<ForgePlugin | null>("forge_plugin_status")
+    call<ForgePlugin | null>("forge_plugin_status")
       .then((f) => (forgePlugin = f))
       .catch(() => {});
   async function updateForgePlugin() {
     forgeUpdating = true;
     try {
-      await invoke("forge_plugin_update");
+      await call("forge_plugin_update");
       forgeUpdateMsg = t("업데이트됨 — 열린 claude 세션은 다시 시작해야 적용됩니다", "Updated — restart open claude sessions to apply");
     } catch (e) {
       forgeUpdateMsg = String(e);
@@ -194,7 +164,7 @@
     const p = current?.path;
     if (!p || p in slashCache) return;
     slashCache[p] = [];
-    invoke<string[]>("slash_commands", { project: p })
+    call<string[]>("slash_commands", { project: p })
       .then((list) => (slashCache[p] = list))
       .catch(() => {});
   });
@@ -225,8 +195,8 @@
     if (!current) return;
     fillError = "";
     try {
-      const name = await invoke<string>("session_fill", { project: current.path, role, text });
-      sessions = await invoke<Record<string, SessionState>>("session_states");
+      const name = await call<string>("session_fill", { project: current.path, role, text });
+      sessions = await call<Record<string, SessionState>>("session_states");
       focus = { name, tick: focus.tick + 1 };
       lastFill = { role, text, n: lastFill.n + 1 };
     } catch (e) {
@@ -277,25 +247,23 @@
 
   async function loadNames(list: Snapshot[]) {
     for (const p of list) {
-      if (!names[p.path]) names[p.path] = await invoke<[string, string]>("session_names", { project: p.path });
-      if (!titles[p.path]) titles[p.path] = await invoke<[SessionTitle, SessionTitle]>("session_titles", { project: p.path });
+      if (!names[p.path]) names[p.path] = await call<[string, string]>("session_names", { project: p.path });
+      if (!titles[p.path]) titles[p.path] = await call<[SessionTitle, SessionTitle]>("session_titles", { project: p.path });
     }
   }
 
-  const notify = (body: string) => invoke("notify", { body });
-
-  /** 입력 대기로 바뀐 세션을 알린다. 지금 보고 있는 프로젝트의 세션은 알리지 않는다. */
-  function onSessions(next: Record<string, SessionState>) {
-    for (const [name, s] of Object.entries(next)) {
-      if (!s.alive || s.state !== "waiting" || sessions[name]?.state === "waiting") continue;
-      const owner = projects.find((p) => names[p.path]?.includes(name));
-      if (!owner) continue;
-      if (owner.path === current?.path && document.hasFocus()) continue;
-      const role: Role = names[owner.path][0] === name ? "plan" : "run";
-      notify(t(`${owner.name} ${roleLabel[role]} 세션 · 입력 대기 — ${owner.headline}`, `${owner.name} ${roleLabel[role]} session · waiting for input — ${owner.headline}`));
-    }
-    sessions = next;
-  }
+  /** 브라우저 탭 제목 — 입력을 기다리는 세션이 하나라도 있으면 🔔 */
+  let anyWaiting = $derived(
+    projects.some((p) =>
+      ROLES.some((r) => {
+        const s = sessionOf(p.path, r);
+        return s?.alive && s.state === "waiting";
+      }),
+    ),
+  );
+  $effect(() => {
+    document.title = anyWaiting ? "🔔 Anvil" : "Anvil";
+  });
 
   onMount(() => {
     try {
@@ -304,50 +272,61 @@
     loadLayout();
     // 백엔드 문구(요약 · 경고)가 화면 언어로 나오도록 언어를 먼저 알린 뒤 불러온다
     initLang()
-      .then(() => invoke<Snapshot[]>("list_projects"))
+      .then(() => call<Snapshot[]>("list_projects"))
       .then(async (list) => {
         projects = list;
         await loadNames(list);
-        sessions = await invoke<Record<string, SessionState>>("session_states");
-        models = await invoke<Record<string, ModelInfo>>("session_models");
+        sessions = await call<Record<string, SessionState>>("session_states");
+        models = await call<Record<string, ModelInfo>>("session_models");
       })
       .catch((e) => (loadError = String(e)))
       .finally(() => (loading = false));
-    const unSnap = listen<Snapshot>("snapshot", (e) => {
-      const i = projects.findIndex((p) => p.path === e.payload.path);
-      if (i >= 0) projects[i] = e.payload;
-      if (currentTab?.project === e.payload.path) loadDoc(currentTab);
+    const unSnap = on<Snapshot>("snapshot", (snap) => {
+      const i = projects.findIndex((p) => p.path === snap.path);
+      if (i >= 0) projects[i] = snap;
+      if (currentTab?.project === snap.path) loadDoc(currentTab);
     });
-    const unSess = listen<Record<string, SessionState>>("sessions", (e) => onSessions(e.payload));
-    const unModels = listen<Record<string, ModelInfo>>("models", (e) => (models = e.payload));
-    // 훅이 못 남기는 변화(claude가 아닌 이유로 tmux 세션이 사라짐)도 따라가도록 가끔 다시 읽는다.
+    const unSess = on<Record<string, SessionState>>("sessions", (s) => (sessions = s));
+    const unModels = on<Record<string, ModelInfo>>("models", (m) => (models = m));
+    // 이벤트를 놓쳐도(웹소켓이 다시 붙는 사이 등) 따라가도록 가끔 다시 읽는다. 서버가 잠깐 없는 것은 넘기고, 401은 아래 unauthorized로 올라온다.
     const poll = setInterval(async () => {
-      onSessions(await invoke("session_states"));
-      models = await invoke("session_models");
+      try {
+        sessions = await call("session_states");
+        models = await call("session_models");
+      } catch {}
     }, 5000);
-    // 배포판 업데이트: 시작 때와 24시간마다 확인한다(로컬 폴링 설치본은 백엔드가 None을 준다).
-    const checkUpdate = () =>
-      invoke<string | null>("updater_check")
-        .then((v) => (newVersion = v))
-        .catch(() => {});
-    checkUpdate();
+    // 서버가 새 토큰으로 다시 떴다 — 보드(죽은 세션이 살아 보인다) 대신 다시 열 주소를 알린다
+    const unAuth = on("unauthorized", () => {
+      clearInterval(poll);
+      loadError = t(
+        "서버가 다시 시작되었습니다 — 서버가 찍은 Anvil 주소(…/?token=)를 다시 여세요",
+        "The server restarted — reopen the Anvil address it printed (…/?token=)",
+      );
+    });
     checkDeps();
     checkForgePlugin();
-    const updatePoll = setInterval(checkUpdate, 24 * 60 * 60 * 1000);
     return () => {
-      unSnap.then((f) => f());
-      unSess.then((f) => f());
-      unModels.then((f) => f());
+      unSnap();
+      unSess();
+      unModels();
+      unAuth();
       clearInterval(poll);
-      clearInterval(updatePoll);
     };
   });
 
   async function addProject() {
-    const dir = await open({ directory: true, multiple: false, title: t("프로젝트 폴더 고르기", "Choose project folder") });
+    let dir: unknown;
+    try {
+      dir = await call<string | null | { unsupported: true }>("pick_folder");
+    } catch (e) {
+      loadError = String(e);
+      return;
+    }
+    // 폴더 고르기 창이 없는 OS(macOS 아님)는 경로를 직접 받는다
+    if (dir && typeof dir === "object") dir = prompt(t("프로젝트 폴더의 절대 경로", "Absolute path of the project folder"))?.trim() || null;
     if (typeof dir !== "string") return;
     try {
-      projects = await invoke<Snapshot[]>("add_project", { path: dir });
+      projects = await call<Snapshot[]>("add_project", { path: dir });
       await loadNames(projects);
       selectProject(dir);
     } catch (e) {
@@ -356,7 +335,7 @@
   }
 
   async function removeProject(path: string) {
-    projects = await invoke<Snapshot[]>("remove_project", { path });
+    projects = await call<Snapshot[]>("remove_project", { path });
     tabs = tabs.filter((t) => t.project !== path);
     activeTab = null;
   }
@@ -370,7 +349,7 @@
 
   async function loadDoc(tab: DocTab) {
     try {
-      const text = await invoke<string>("read_doc", { project: tab.project, rel: tab.rel });
+      const text = await call<string>("read_doc", { project: tab.project, rel: tab.rel });
       docHtml = await marked.parse(text);
       docError = "";
     } catch (e) {
@@ -491,7 +470,7 @@
             {t("언어", "Language")}
             <select value={i18n.choice} onchange={(e) =>
                 setLang(e.currentTarget.value as LangChoice)
-                  .then(() => invoke<Snapshot[]>("list_projects"))
+                  .then(() => call<Snapshot[]>("list_projects"))
                   .then((list) => (projects = list))
                   .then(checkDeps)
                   .catch(() => {})}>
@@ -508,41 +487,13 @@
 
   <section class="main" bind:this={mainEl}>
     <!-- 준비물 띠 — 프로젝트가 없어도 앱 맨 위에(첫 설치 문제 1) -->
-    {#if deps?.message || depsSteps.some((s) => s.outcome !== "ok")}
+    {#if deps?.message}
       <div class="band top">
-        <span class="b"><span class="crit">✕</span> {deps?.message ? t("준비물이 빠졌습니다", "Missing prerequisites") : t("일부 설치 실패", "Some installs failed")}</span>
-        <span class="ink2 msg">{#if depsChecking}{t("확인 중…", "Checking…")}{:else}{#each linkParts(depsError || deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
+        <span class="b"><span class="crit">✕</span> {t("준비물이 빠졌습니다", "Missing prerequisites")}</span>
+        <span class="ink2 msg">{#if depsChecking}{t("확인 중…", "Checking…")}{:else}{#each linkParts(deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} target="_blank" rel="noreferrer">{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
+        <!-- 2/4: 설치 줄(한 줄 설치 스크립트) 다시 실행 안내가 이 자리에 들어온다 -->
         <span class="sp"></span>
-        <button class="btn sm quiet" disabled={depsInstalling || depsChecking} onclick={recheckDeps}>{t("다시 확인", "Check again")}</button>
-        {#if deps?.installable}
-          <button class="btn sm" disabled={depsInstalling || depsChecking} onclick={installDeps}>
-            {depsInstalling ? t("설치 중…", "Installing…") : depsError || depsSteps.length ? t("다시 시도", "Retry") : t("설치", "Install")}
-          </button>
-        {/if}
-        {#if depsSteps.length}
-          <ul class="steps">
-            {#each depsSteps as st (st.need)}
-              <li>
-                <span class={st.outcome === "ok" ? "ok" : st.outcome === "failed" ? "crit" : "t3"}>{st.outcome === "ok" ? "✓" : st.outcome === "failed" ? "✕" : st.outcome === "started" ? "…" : "–"}</span>
-                <span class="b">{st.label}</span>
-                <span class="ink2">{st.outcome === "ok" ? t("설치됨", "Installed") : st.outcome === "failed" ? t("실패", "Failed") : st.outcome === "started" ? t("설치 중", "Installing") : t("건너뜀", "Skipped")}{#if st.detail} — {#each linkParts(st.detail) as part, i (i)}{#if part.url}<a href={part.text} onclick={(e) => { e.preventDefault(); openUrl(part.text); }}>{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </div>
-    {/if}
-    {#if needLogin}
-      <div class="band top">
-        <span class="b">{t("claude CLI 설치됨", "claude CLI installed")}</span>
-        <!-- Linux·WSL은 외부 터미널 창을 열지 않는다 — 세션 안의 claude가 로그인을 안내한다 -->
-        {#if deps?.platform && deps.platform !== "macos"}
-          <span class="ink2">{t("Anvil에서 세션을 열면 claude가 로그인을 안내합니다", "Open a session in Anvil and claude will guide you through login")}</span>
-        {:else}
-          <span class="ink2">{t("터미널에서 한 번 로그인해야 세션을 쓸 수 있습니다", "Log in once in a terminal to use sessions")}</span>
-          <span class="sp"></span>
-          <button class="btn sm" onclick={() => invoke("deps_login").then(() => (needLogin = false)).catch((e) => (depsError = String(e)))}>{t("로그인", "Log in")}</button>
-        {/if}
+        <button class="btn sm quiet" disabled={depsChecking} onclick={checkDeps}>{t("다시 확인", "Check again")}</button>
       </div>
     {/if}
     {#if loading}
@@ -599,27 +550,6 @@
         <div class="band">
           <span class="b">forge {forgePlugin.installed}</span>
           <span class="ink2">{t("Anvil이 확인한 forge(0.9.x)보다 새 버전이라 보드가 정확하지 않을 수 있습니다", "Newer than the forge version Anvil was tested with (0.9.x); the board may be inaccurate")}</span>
-        </div>
-      {/if}
-      {#if newVersion}
-        <div class="band">
-          {#if updateError}
-            <span class="b"><span class="crit">✕</span> {t("업데이트 실패", "Update failed")}</span><span class="ink2">{updateError}</span>
-          {:else}
-            <span class="b">{t("새 버전 준비됨", "New version ready")}</span><span class="ink2">v{newVersion}</span>
-          {/if}
-          <span class="sp"></span>
-          <button
-            class="btn sm"
-            disabled={updating}
-            onclick={() => {
-              updating = true;
-              updateError = "";
-              invoke("updater_install").catch((e) => {
-                updating = false;
-                updateError = String(e);
-              });
-            }}>{updating ? t("업데이트 중…", "Updating…") : updateError ? t("다시 시도", "Retry") : t("업데이트·재시작", "Update & restart")}</button>
         </div>
       {/if}
       {#if fillError}
@@ -802,8 +732,6 @@
   .band.top { margin-top: 8px; flex-wrap: wrap; border-left-color: var(--crit); }
   .band .msg { min-width: 0; overflow-wrap: anywhere; }
   .band a { color: var(--accent); text-decoration: underline; cursor: pointer; }
-  .steps { flex: 0 0 100%; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-  .steps li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
   .band { flex: none; display: flex; align-items: center; gap: 12px; margin: 0 16px 8px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line2); border-left: 3px solid var(--crit); }
   .tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line2); overflow-x: auto; flex: none; }
   .tab { display: inline-flex; align-items: center; height: 32px; padding: 0 8px; border: 0; border-radius: 6px 6px 0 0; background: none; color: var(--ink2); cursor: pointer; white-space: nowrap; }
