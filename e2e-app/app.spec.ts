@@ -9,6 +9,8 @@ import { join } from "node:path";
 // claude 자리에는 가짜 claude(server/test/fake-claude.js)를 넣어 진짜 claude가 뜨지 않게 한다.
 
 const root = join(import.meta.dirname, "..");
+/** 보드의 [프로젝트 추가] — 화면 언어는 OS를 따른다(CI 러너는 영어) */
+const ADD_PROJECT = /＋ (프로젝트 추가|Add project)/;
 
 function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -58,7 +60,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
   const launch = () => electron.launch({ args: appArgs, env });
   const serverPid = () => JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
   const board = (win: Awaited<ReturnType<Awaited<ReturnType<typeof launch>>["firstWindow"]>>) =>
-    expect(win.getByRole("button", { name: "＋ 프로젝트 추가" }).first()).toBeVisible({ timeout: 30_000 });
+    expect(win.getByRole("button", { name: ADD_PROJECT }).first()).toBeVisible({ timeout: 30_000 });
   let pid = 0;
   try {
     const first = await launch();
@@ -127,7 +129,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
   try {
     const first = await launch();
     const win = await first.firstWindow();
-    await expect(win.getByRole("button", { name: "＋ 프로젝트 추가" }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(win.getByRole("button", { name: ADD_PROJECT }).first()).toBeVisible({ timeout: 30_000 });
     const name = (await call(win, "session_start", { project, role: "plan" })) as string;
     await expect.poll(async () => (await sessionOf(win, name))?.sessionId, { timeout: 15_000 }).toBeTruthy();
     const sid = (await sessionOf(win, name)).sessionId;

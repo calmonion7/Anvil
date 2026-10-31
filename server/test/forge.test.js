@@ -264,7 +264,7 @@ test('UTF-8이 아닌 파일도 그 파일만 오류로 남긴다', () => {
     s.backlog.map((b) => b.slug),
     ['good'],
   );
-  assert.deepEqual(s.errors, [{ path: join('.forge', 'backlog', 'bad.md'), message: 'UTF-8 문서가 아닙니다. 이 파일만 건너뛰었습니다.' }]);
+  assert.deepEqual(s.errors, [{ path: '.forge/backlog/bad.md', message: 'UTF-8 문서가 아닙니다. 이 파일만 건너뛰었습니다.' }]);
 });
 
 // ---------- 세션과 작업 연결 ----------

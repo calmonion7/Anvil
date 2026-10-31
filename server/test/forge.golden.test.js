@@ -29,7 +29,8 @@ for (const [name, fixture, head] of cases) {
         mkdirSync(join(project, '.git'));
         writeFileSync(join(project, '.git/HEAD'), head);
       }
-      const actual = JSON.parse(JSON.stringify(snapshot(project)).replaceAll(project, '<ROOT>'));
+      // JSON 안에서는 Windows 경로의 백슬래시가 겹쳐 있다 — 같은 모양으로 바꿔 찾는다
+      const actual = JSON.parse(JSON.stringify(snapshot(project)).replaceAll(JSON.stringify(project).slice(1, -1), '<ROOT>'));
       const golden = JSON.parse(readFileSync(join(here, 'golden', `${name}.json`), 'utf8'));
       assert.deepStrictEqual(actual, golden);
     } finally {
