@@ -29,16 +29,18 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
 ## 설치
 
-[Releases](https://github.com/calmonion7/Anvil/releases) 에서 OS에 맞는 파일을 받는다.
+[Releases](https://github.com/calmonion7/Anvil/releases) 에서 OS에 맞는 파일을 받는다. 서명하지 않은 앱이라 **처음 한 번만** 경고를 넘긴다.
 
-- **macOS** (`.dmg`, Apple Silicon은 `aarch64`): 서명하지 않은 앱이다. 처음 열 때 막히면 Finder에서 우클릭 → 열기. "손상되었습니다"라고 나오면 터미널에서:
+- **macOS** (`Anvil-<버전>-mac-arm64.dmg` — Apple Silicon, Intel 맥은 `mac-x64.dmg`): dmg를 열어 Anvil을 응용 프로그램 폴더로 옮긴다. 처음 열 때 막히면 Finder에서 우클릭 → 열기. "손상되었습니다"라고 나오면 터미널에서:
   ```
   xattr -cr /Applications/Anvil.app
   ```
-- **Windows** (`Setup.exe`, x64, 실험용): WSL 없이 설치 프로그램을 실행하면 사용자 범위로 설치된다(관리자 권한 없음). 서명하지 않은 앱이라 처음 한 번 SmartScreen 창이 뜨면 「추가 정보 → 실행」을 누른다. 프로젝트 폴더는 윈도우 경로(`C:\…`)를 쓴다.
-- **Linux** (`.AppImage` / `.deb`, x86_64, 실험용): 띠의 [설치]로 준비물을 넣는다(git만 직접).
+- **Windows** (`Anvil-<버전>-win-x64.exe`): 실행하면 사용자 범위로 설치된다(관리자 권한 없음, WSL 필요 없음). 처음 한 번 SmartScreen 창이 뜨면 「추가 정보 → 실행」을 누른다. ARM Windows에서도 x64 에뮬레이션으로 돈다. 프로젝트 폴더는 윈도우 경로(`C:\…`)를 쓴다.
+- **Linux** (`Anvil-<버전>-linux-x86_64.AppImage`): 실행 권한을 주고(`chmod +x`) 실행한다.
 
-설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.
+처음 열면 「준비 중」 화면에서 빠진 준비물(claude CLI·forge 플러그인, Windows는 Git for Windows)을 자동으로 설치한 뒤 보드로 넘어간다.
+
+**업데이트**: 새 버전이 나오면 보드 위 띠에 [업데이트]가 뜬다. 누르면 앱이 새 버전으로 다시 열리고, 열려 있던 세션은 대화째 이어진다. 작업 중인 세션이 있으면 그 세션이 끝난 뒤 바뀐다. [⚙ 설정] 의 [다시 확인]으로 바로 확인할 수도 있다.
 
 ## 쓰면서 알아둘 것
 
@@ -70,7 +72,6 @@ npm run dev:app        # 데스크톱 앱 개발 실행: vite 화면 + Electron 
 npm run test:app       # Electron 앱 스모크(먼저 npm run build) · npm run dist:mac → dist/에 mac arm64 .dmg
 npm run check          # 타입 검사
 cd src-tauri && cargo test
-scripts/install-app.sh # 이 맥에 빌드해 설치(main을 따라가는 로컬 설치본)
 scripts/release.sh X.Y.Z  # 버전 맞추고 커밋 + 태그 (push는 직접). 릴리스 노트 docs/releases/vX.Y.Z.md 를 먼저 커밋
 # 또는: 버전(5개 파일) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
 gh workflow run e2e-desktop.yml --ref <브랜치>  # 실제 앱 첫 실행 흐름을 Linux·Windows 러너에서(버전 PR에서는 자동)
