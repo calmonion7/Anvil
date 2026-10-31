@@ -39,6 +39,8 @@ export type Ipc = {
   sent: any[];
   /** 준비물 확인 응답 — 기본 null(띠 없음) */
   deps: unknown;
+  /** deps_install 응답(지금 진행) — 기본 `{running:true, items:[]}` */
+  install: unknown;
   /** pick_folder 응답 — 기본 null(취소) */
   pick: unknown;
   /** 서버 이벤트를 화면에 보낸다 */
@@ -66,6 +68,7 @@ export async function mockIpc(page: Page): Promise<Ipc> {
     calls: [],
     sent: [],
     deps: null,
+    install: null,
     pick: null,
     pending: [],
     doc: null,
@@ -101,6 +104,7 @@ export async function mockIpc(page: Page): Promise<Ipc> {
       case "deps_status":
         if (held) return new Promise((r) => ipc.pending.push(r));
         return ipc.deps;
+      case "deps_install": return ipc.install ?? { running: true, items: [] };
       case "slash_commands":
         return ["/eli5", "/forge:fg-ask", "/forge:fg-doctor", "/forge:fg-learn", "/forge:fg-next", "/forge:fg-run", "/forge:fg-status"];
       default: return null;

@@ -38,12 +38,13 @@
 | `session_fill` | `{project, role, text}` | `string`(채운 세션 이름) | session.js |
 | `slash_commands` | `{project}` | `string[]` | session.js |
 | `deps_status` | – | `{needs, message, installable:false, platform}` | deps.js |
+| `deps_install` | – | 지금 진행 `{running, items:[{need, label, state, detail}]}`(설치는 뒤에서 계속 — `deps_progress` 이벤트). 이미 도는 중이면 새로 시작하지 않는다 | deps.js |
 | `forge_plugin_status` | – | `{installed, latest, update_available, untested}` | deps.js |
 | `forge_plugin_update` | – | `null` | deps.js |
 | `set_lang` | `{en}` | `null` | i18n.js |
 | `pick_folder` (새) | – | 절대 경로 `string` · 취소 `null` · macOS 아님 `{unsupported:true}`(화면이 경로 입력으로) | pick.js |
 
-없앤 명령: `deps_install`·`deps_login`·`updater_check`·`updater_install`·`notify`.
+없앤 명령: `deps_login`·`updater_check`·`updater_install`·`notify`. `deps_install`은 3/6에서 버튼 없는 첫 실행 자동 설치로 다시 생겼다.
 
 ## 웹소켓: `GET /ws`
 
@@ -51,7 +52,7 @@
 
 | 방향 | 메시지 | 뜻 |
 |---|---|---|
-| 서버→화면 | `{type:'event', name, payload}` | Tauri `emit`. `name`: `snapshot`(Snapshot 하나) · `sessions` · `models` |
+| 서버→화면 | `{type:'event', name, payload}` | Tauri `emit`. `name`: `snapshot`(Snapshot 하나) · `sessions` · `models` · `deps_progress`(자동 설치 진행 — `state`: `pending`·`running`·`ok`·`failed`·`skipped`) |
 | 화면→서버 | `{type:'term_open', id, name, cols, rows}` | 세션 `name`에 터미널 `id`를 붙인다 |
 | 화면→서버 | `{type:'term_write', id, data}` | 입력 |
 | 화면→서버 | `{type:'term_resize', id, cols, rows}` | 크기 |

@@ -1,5 +1,6 @@
-// 준비물(node 22 이상 · claude CLI · forge 플러그인) 확인과 forge 플러그인 버전 — src-tauri/src/deps.rs 이식.
-// 앱 안 [설치]·로그인 열기는 없앴다(ADR 261029-121641: 설치는 한 줄 설치 스크립트가 맡는다). tmux는 더 이상 준비물이 아니다.
+// 준비물(node 22 이상 · claude CLI · forge 플러그인, Windows는 Git) 확인·첫 실행 자동 설치와 forge 플러그인 버전 — src-tauri/src/deps.rs 이식.
+// 설치는 버튼 없이 화면이 부르는 `deps_install`이 사용자 범위로 한다(ADR 261030-005852). 로그인은 첫 세션 안에서 claude가 받는다.
+// node는 설치하지 않는다(데스크톱 앱은 Electron 안의 node를 쓴다). tmux는 더 이상 준비물이 아니다.
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ const run = promisify(execFile);
 const platform = { darwin: 'macos', win32: 'windows' }[process.platform] ?? 'linux';
 
 const FORGE_PLUGIN = 'forge@forge';
+const FORGE_MARKETPLACE = 'gyuha/forge';
 /** Anvil 보드가 맞춰 만든 forge 버전(major.minor). 이보다 높으면 `.forge/` 형식이 달라졌을 수 있다. */
 const TESTED_FORGE = [0, 9];
 
@@ -35,10 +37,13 @@ export function forgeInstalled(home) {
 const nodeOk = (version) => Number(version.trim().replace(/^v/, '').split('.')[0]) >= 22;
 
 /** 빠진 준비물. `probe(프로그램)`이 `--version`류 실행 성공 여부, `nodeVersion`이 `node --version` 출력.
- *  forge가 빠졌으면 git도 확인한다 — macOS는 `git` 대신 `xcode-select -p`로 물어야 설치 창이 뜨지 않는다. */
+ *  forge가 빠졌으면 git도 확인한다 — macOS는 `git` 대신 `xcode-select -p`로 물어야 설치 창이 뜨지 않는다.
+ *  Windows는 claude가 Git Bash로 돌므로 forge와 상관없이 Git을 확인한다. */
 export function missing(probe, nodeVersion, forge, os) {
   const v = [];
-  if (!forge) {
+  if (os === 'windows') {
+    if (!probe('git', ['--version'])) v.push('git');
+  } else if (!forge) {
     if (os === 'macos' ? !probe('xcode-select', ['-p']) : !probe('git', ['--version'])) v.push(os === 'macos' ? 'devtools' : 'git');
   }
   if (!(nodeVersion && nodeOk(nodeVersion))) v.push('node');
@@ -75,6 +80,122 @@ async function status() {
   const needs = missing((p) => outs.get(p) != null, outs.get('node'), forgeInstalled(claudeHome()), platform);
   // installable은 [설치]가 없어져 늘 false — 화면이 쓰던 모양은 그대로 둔다.
   return { needs, message: needs.length ? needsMessage(needs, platform) : null, installable: false, platform };
+}
+
+// ---------- 첫 실행 자동 설치 ----------
+
+const XCODE_INSTALLER = 'Install Command Line Developer Tools';
+
+/** 설치 순서 — Windows Git·mac 개발자 도구(forge를 받는 데 git이 필요) → claude → forge(claude 명령으로 받는다). node는 설치하지 않는다. */
+const ORDER = ['git', 'devtools', 'claude', 'forge'];
+
+/** 설치할 항목을 순서대로 → [{ need, label, state: 'pending', detail: null }] */
+export function installPlan(needs, os) {
+  return ORDER.filter((n) => needs.includes(n) && (n !== 'git' || os !== 'macos')).map((need) => ({ need, label: label(need), state: 'pending', detail: null }));
+}
+
+/** 설치 명령의 오류에서 화면에 보일 원문 끝부분 */
+const tail = (e) => String(e?.stderr || e?.message || e).trim().split('\n').slice(-3).join('\n').slice(-400);
+
+/** 데스크톱 우분투엔 curl이 없을 수 있어 wget으로도 받는다(claude install.sh도 wget으로 돈다 — deps.rs 실측) */
+const CLAUDE_SH = 'set -o pipefail 2>/dev/null; if command -v curl >/dev/null 2>&1; then curl -fsSL https://claude.ai/install.sh; else wget -q -O - https://claude.ai/install.sh; fi | bash';
+
+/** 항목 하나를 설치하는 일 — `x(prog, args)`는 표준 출력을 돌려주거나 오류를 던진다. `wait()`는 mac 개발자 도구 설치 창이 끝났는지 기다린다. */
+const steps = {
+  git: async (x, os) => {
+    if (os !== 'windows') throw new Error(`${tr('git은 터미널에서 직접 설치하세요: ', 'Install git yourself in a terminal: ')}sudo apt install git`);
+    await x('winget', ['install', '--id', 'Git.Git', '-e', '--scope', 'user', '--silent', '--accept-package-agreements', '--accept-source-agreements']);
+  },
+  devtools: async (x, _os, wait, note) => {
+    await x('xcode-select', ['--install']).catch(() => {}); // 이미 설치 창이 떠 있어도 오류로 끝난다
+    // 설치 창이 Anvil 창 뒤에 숨지 않게 앞으로 가져온다(VM UAT 2026-10-31 — deps.rs가 하던 일). 못 가져와도 설치는 그대로.
+    await x('osascript', ['-e', `tell application "${XCODE_INSTALLER}" to activate`]).catch(() => {});
+    note(tr('열린 「개발자 도구」 설치 창에서 [설치]를 눌러 주세요', 'Click [Install] in the developer tools window that opened'));
+    if (!(await wait())) throw new Error(tr('개발자 도구 설치 창에서 설치를 마친 뒤 [다시 시도]', 'Finish the developer tools installer, then [Try again]'));
+  },
+  claude: (x, os) =>
+    os === 'windows'
+      ? x('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://claude.ai/install.ps1 | iex'])
+      : x('/bin/bash', ['-c', CLAUDE_SH]),
+  forge: async (x) => {
+    if (!/\bforge\b/.test(await x('claude', ['plugin', 'marketplace', 'list']))) await x('claude', ['plugin', 'marketplace', 'add', FORGE_MARKETPLACE]);
+    await x('claude', ['plugin', 'install', FORGE_PLUGIN]);
+  },
+};
+
+/** mac 개발자 도구: 설치 창을 띄운 뒤 `xcode-select -p`가 될 때까지(최대 30분) 기다린다. */
+const waitDevtools = (x) => async () => {
+  const end = Date.now() + 30 * 60_000;
+  while (Date.now() < end) {
+    if (await x('xcode-select', ['-p']).then(() => true, () => false)) return true;
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  return false;
+};
+
+/**
+ * 빠진 준비물을 순서대로 설치한다. 하나가 실패해도 다음 항목을 계속하되, forge는 앞 항목(claude·git·개발자 도구)이 안 되면 건너뛴다.
+ * 바뀔 때마다 `onChange(items)`. → items
+ */
+export async function installWith(needs, os, x, { onChange = () => {}, wait = waitDevtools(x) } = {}) {
+  const items = installPlan(needs, os);
+  for (const item of items) {
+    if (item.need === 'forge') {
+      const blocker = items.find((i) => i.need !== 'forge' && i.state !== 'ok');
+      if (blocker) {
+        item.state = 'skipped';
+        item.detail = `${blocker.label}${tr('이(가) 먼저 필요합니다', ' is required first')}`;
+        onChange(items);
+        continue;
+      }
+    }
+    item.state = 'running';
+    onChange(items);
+    // 사람이 할 일이 있으면(설치 창) 진행 중인 항목에 안내를 띄운다
+    const note = (msg) => {
+      item.detail = msg;
+      onChange(items);
+    };
+    try {
+      await steps[item.need](x, os, wait, note);
+      item.state = 'ok';
+      item.detail = null;
+    } catch (e) {
+      item.state = 'failed';
+      item.detail = tail(e);
+    }
+    onChange(items);
+  }
+  return items;
+}
+
+/** 실제 실행기 — Anvil PATH(설치 직후의 ~/.local/bin claude 포함)로, 설치 하나에 최대 10분 */
+const exec = async (prog, args) =>
+  (await run(prog, args, { env: { ...process.env, PATH: runPath() }, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 })).stdout;
+
+/** 지금 진행(없으면 null): { running, items } — 다시 붙는 화면이 `deps_install`로 받는다 */
+let progress = null;
+let current = null;
+
+/**
+ * 설치를 시작한다(이미 도는 중이면 그 진행을 돌려준다 — 한 번에 하나만). 진행은 `deps_progress` 이벤트로 보낸다.
+ * `needs`를 주지 않으면 지금 확인해서 빠진 것만 설치한다(이미 있으면 건너뜀). → 끝난 진행의 Promise
+ */
+export function startInstall(ctx, { needs, os = platform, x = exec } = {}) {
+  if (current) return current;
+  progress = { running: true, items: [] };
+  current = (async () => {
+    const list = needs ?? (await status()).needs;
+    const send = (items) => {
+      progress = { running: true, items: items.map((i) => ({ ...i })) };
+      ctx.broadcast('deps_progress', progress);
+    };
+    const items = await installWith(list, os, x, { onChange: send });
+    progress = { running: false, items };
+    ctx.broadcast('deps_progress', progress);
+    return progress;
+  })().finally(() => (current = null));
+  return current;
 }
 
 // ---------- forge 플러그인 버전 ----------
@@ -124,6 +245,12 @@ export function forgePluginFrom(installed, latest) {
 export const commands = {
   /** 준비물 확인 — 빠졌으면 띠 문구 */
   deps_status: () => status(),
+
+  /** 빠진 준비물 자동 설치를 시작한다(이미 도는 중이면 그대로). 끝까지 기다리지 않고 지금 진행을 돌려준다 — 이후는 `deps_progress` 이벤트. */
+  deps_install: (_args, ctx) => {
+    startInstall(ctx).catch((e) => console.error(`준비물 설치 실패: ${e?.message ?? e}`));
+    return progress;
+  },
 
   /** forge 플러그인 새 버전 · 호환 여부(마켓플레이스를 새로 받는다) */
   forge_plugin_status: async () => {

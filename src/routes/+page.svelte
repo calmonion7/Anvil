@@ -1,6 +1,5 @@
 <script lang="ts">
   import { call, on } from "$lib/api";
-  import { linkParts } from "$lib/format";
   import { marked } from "marked";
   import { onMount } from "svelte";
   import NowStrip from "$lib/NowStrip.svelte";
@@ -9,6 +8,7 @@
   import FlowLinks, { type FlowPulses } from "$lib/FlowLinks.svelte";
   import ListPopup, { type ListKind } from "$lib/ListPopup.svelte";
   import SessionPane from "$lib/SessionPane.svelte";
+  import Prepare, { type InstallProgress } from "$lib/Prepare.svelte";
   import { t, i18n, setLang, initLang, type LangChoice } from "$lib/i18n.svelte";
   import { roleLabel, stateLabel, pipClass, linkedTask } from "$lib/sessions";
   import type { Snapshot, DocTab, SessionState, Role, BoardActions, SessionTitle, ModelInfo } from "$lib/types";
@@ -81,25 +81,36 @@
   /** 보드 버튼이 명령을 채운 세션과 초점 요청 횟수 */
   let focus = $state<{ name: string; tick: number }>({ name: "", tick: 0 });
   let fillError = $state("");
-  // 준비물(node · claude CLI · forge) — 빠졌으면 띠와 [다시 확인]. 설치는 한 줄 설치 스크립트 몫이다.
+  // 준비물(claude CLI · forge, Windows는 Git) — 빠졌으면 보드 대신 「준비 중」 화면이 뜨고, 버튼 없이 자동 설치를 한 번 시작한다(3/6).
   type DepsStatus = { needs: string[]; message: string | null; installable: boolean; platform?: string };
   let deps = $state<DepsStatus | null>(null);
+  /** 자동 설치 진행(서버 `deps_progress`) */
+  let install = $state<InstallProgress | null>(null);
+  /** 자동 설치는 처음 한 번만 — 그 뒤는 [다시 시도]로(실패한 채 다시 확인할 때마다 또 설치하지 않게) */
+  let autoInstalled = false;
+  let preparing = $derived(!!deps?.needs?.length);
+  const startInstall = () =>
+    call<InstallProgress | null>("deps_install")
+      .then((p) => {
+        if (p?.running) install = p;
+      })
+      .catch(() => {});
   /** 준비물이 빠진 동안 세션을 여는 버튼은 끈다 */
   let depsBlocked = $derived(deps?.message ? t("먼저 위 띠의 준비물을 갖추세요", "Get the prerequisites in the band above first") : null);
   /** 확인마다 순번을 매겨 가장 최근 확인의 응답만 반영한다 — WSL은 확인 한 번에 수십 초라 늦은 옛 응답이 새 결과를 덮을 수 있다 */
   let depsSeq = 0;
-  let depsChecking = $state(false);
   const checkDeps = () => {
     const seq = ++depsSeq;
-    depsChecking = true;
     return call<DepsStatus>("deps_status")
       .then((d) => {
-        if (seq === depsSeq) deps = d;
+        if (seq !== depsSeq) return;
+        deps = d;
+        if (d?.needs?.length && !autoInstalled) {
+          autoInstalled = true;
+          startInstall();
+        }
       })
-      .catch(() => {})
-      .finally(() => {
-        if (seq === depsSeq) depsChecking = false;
-      });
+      .catch(() => {});
   };
   // 설정 > 역할별 모델 — 새로 여는 세션부터 적용
   const MODEL_CHOICES = $derived([
@@ -288,6 +299,11 @@
     });
     const unSess = on<Record<string, SessionState>>("sessions", (s) => (sessions = s));
     const unModels = on<Record<string, ModelInfo>>("models", (m) => (models = m));
+    // 설치가 끝나면 다시 확인한 뒤에 끝난 진행을 반영한다 — 다 갖췄으면 보드로, 남았으면 실패와 [다시 시도]가 함께 보인다
+    const unInstall = on<InstallProgress>("deps_progress", (p) => {
+      if (p.running) install = p;
+      else checkDeps().then(() => (install = p));
+    });
     // 이벤트를 놓쳐도(웹소켓이 다시 붙는 사이 등) 따라가도록 가끔 다시 읽는다. 서버가 잠깐 없는 것은 넘기고, 401은 아래 unauthorized로 올라온다.
     const poll = setInterval(async () => {
       try {
@@ -309,6 +325,7 @@
       unSnap();
       unSess();
       unModels();
+      unInstall();
       unAuth();
       clearInterval(poll);
     };
@@ -486,17 +503,10 @@
   </aside>
 
   <section class="main" bind:this={mainEl}>
-    <!-- 준비물 띠 — 프로젝트가 없어도 앱 맨 위에(첫 설치 문제 1) -->
-    {#if deps?.message}
-      <div class="band top">
-        <span class="b"><span class="crit">✕</span> {t("준비물이 빠졌습니다", "Missing prerequisites")}</span>
-        <span class="ink2 msg">{#if depsChecking}{t("확인 중…", "Checking…")}{:else}{#each linkParts(deps?.message || "") as part, i (i)}{#if part.url}<a href={part.text} target="_blank" rel="noreferrer">{part.text}</a>{:else}{part.text}{/if}{/each}{/if}</span>
-        <!-- 2/4: 설치 줄(한 줄 설치 스크립트) 다시 실행 안내가 이 자리에 들어온다 -->
-        <span class="sp"></span>
-        <button class="btn sm quiet" disabled={depsChecking} onclick={checkDeps}>{t("다시 확인", "Check again")}</button>
-      </div>
-    {/if}
-    {#if loading}
+    <!-- 준비물이 빠졌으면 보드 대신 「준비 중」(프로젝트가 없어도 — 첫 실행) -->
+    {#if preparing}
+      <Prepare progress={install} message={deps?.message ?? null} onRetry={startInstall} />
+    {:else if loading}
       <div class="center"><div class="skels wide"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div></div>
     {:else if loadError}
       <div class="center"><div class="error"><span class="b">✕ {t("불러오기 실패", "Failed to load")}</span> — {loadError}</div></div>
@@ -729,9 +739,6 @@
   .chip.warn { border-color: transparent; background: var(--warn-wash); color: var(--ink); }
   .sp { flex: 1; }
   .crit { color: var(--crit); }
-  .band.top { margin-top: 8px; flex-wrap: wrap; border-left-color: var(--crit); }
-  .band .msg { min-width: 0; overflow-wrap: anywhere; }
-  .band a { color: var(--accent); text-decoration: underline; cursor: pointer; }
   .band { flex: none; display: flex; align-items: center; gap: 12px; margin: 0 16px 8px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line2); border-left: 3px solid var(--crit); }
   .tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line2); overflow-x: auto; flex: none; }
   .tab { display: inline-flex; align-items: center; height: 32px; padding: 0 8px; border: 0; border-radius: 6px 6px 0 0; background: none; color: var(--ink2); cursor: pointer; white-space: nowrap; }
