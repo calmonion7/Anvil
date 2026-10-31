@@ -74,10 +74,7 @@ npm run check          # 타입 검사
 cd src-tauri && cargo test
 scripts/release.sh X.Y.Z  # 버전 맞추고 커밋 + 태그 (push는 직접). 릴리스 노트 docs/releases/vX.Y.Z.md 를 먼저 커밋
 # 또는: 버전(5개 파일) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
-gh workflow run e2e-desktop.yml --ref <브랜치>  # 실제 앱 첫 실행 흐름을 Linux·Windows 러너에서(버전 PR에서는 자동)
 ```
-
-e2e-desktop 결과는 `gh run download <id>` 로 받는다 — `e2e-desktop-linux`·`e2e-desktop-windows` 아래 시나리오별 단계 스크린샷과 `app.log`·환경 로그. 하네스(`e2e-desktop/`)는 Linux에서 tauri-driver(WebdriverIO)로, Windows에서는 웹뷰 디버그 포트를 연 테스트 빌드(`e2e-desktop/tauri.e2e.json`)에 Playwright로 붙는다 — macOS에서는 돌지 않는다.
 
 ## 라이선스
 
