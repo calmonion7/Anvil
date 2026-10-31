@@ -18,11 +18,11 @@ function tempDir(fn) {
 }
 
 /** 스크립트를 쓰고 기다리며 돌린다(실제 앱은 detached로 띄우고 기다리지 않는다) */
-function runScript(platform, dir, args) {
+function runScript(platform, dir, args, running = '') {
   const s = SCRIPTS[platform];
   const script = join(dir, s.name);
   writeFileSync(script, s.text, { mode: 0o755 });
-  const env = { ...process.env, ANVIL_NO_RELAUNCH: '1' };
+  const env = { ...process.env, ANVIL_NO_RELAUNCH: '1', ANVIL_RUNNING: running };
   if (platform === 'win32') execFileSync('cmd.exe', ['/d', '/c', script, ...args], { env, stdio: 'pipe' });
   else execFileSync('/bin/sh', [script, ...args], { env, stdio: 'pipe' });
 }
@@ -41,7 +41,15 @@ test('설치본만 업데이트한다 — 개발 실행·브라우저 서버는 
 
 test('mac 스크립트는 번들 ID가 아니라 바꿀 .app 경로에만, 돌 때만 종료를 청한다(같은 ID의 다른 설치본을 끄지 않는다)', () => {
   assert.doesNotMatch(SCRIPTS.darwin.text, /app id/);
-  assert.match(SCRIPTS.darwin.text, /if pgrep -f "\$3"[^\n]*quit app \\"\$2\\"/);
+  assert.match(SCRIPTS.darwin.text, /if pgrep -f "\$ANVIL_RUNNING"[^\n]*quit app \\"\$2\\"/);
+});
+
+test('남은 앱을 찾는 패턴은 인자가 아니라 환경변수로 받는다 — 인자면 스크립트 자신이 걸려 스스로를 끝낸다(Linux CI 실측)', () => {
+  for (const p of ['darwin', 'linux']) assert.doesNotMatch(SCRIPTS[p].text, /\$3/, p);
+});
+
+test('Windows 스크립트는 설치 프로그램을 call로 불러 돌아와서 지운다', () => {
+  assert.match(SCRIPTS.win32.text, /call "%~1" \/S/);
 });
 
 test('mac: 내려받은 .zip을 풀어 옛 .app을 새 .app으로 통째로 바꾼다', { skip: process.platform !== 'darwin' }, () => {
@@ -56,7 +64,7 @@ test('mac: 내려받은 .zip을 풀어 옛 .app을 새 .app으로 통째로 바�
     mk(join(d, 'inst'), '0.1.8');
     writeFileSync(join(d, 'inst/Anvil.app/Contents/old-only'), 'x');
     const app = join(d, 'inst/Anvil.app');
-    runScript('darwin', d, [zip, app, `${app}/Contents/`]);
+    runScript('darwin', d, [zip, app], `${app}/Contents/`);
     assert.equal(readFileSync(join(app, 'Contents/version'), 'utf8'), '0.2.0');
     assert.throws(() => statSync(join(app, 'Contents/old-only')), '옛 .app에만 있던 파일은 남지 않는다');
     assert.throws(() => statSync(zip), '내려받은 파일은 지운다');
@@ -69,7 +77,7 @@ test('Linux: 새 AppImage로 옛 파일을 바꾸고 실행 권한을 준다', {
     writeFileSync(next, 'new');
     const app = join(d, 'Anvil.AppImage');
     writeFileSync(app, 'old');
-    runScript('linux', d, [next, app, join(d, 'no-such-mount/')]);
+    runScript('linux', d, [next, app], join(d, 'no-such-mount/'));
     assert.equal(readFileSync(app, 'utf8'), 'new');
     assert.ok(statSync(app).mode & 0o100, '실행 권한');
   });

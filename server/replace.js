@@ -21,12 +21,12 @@ export function installed({ platform = process.platform, execPath = process.exec
 
 export const installable = () => installed() !== null;
 
-/** 남은 앱 프로세스(실행 파일 경로가 $3으로 시작)가 끝나길 30초 기다리고, 남으면 강제로 끝낸다 */
+/** 남은 앱 프로세스(명령줄에 $ANVIL_RUNNING이 든 것)가 끝나길 30초 기다리고, 남으면 강제로 끝낸다. 인자가 아니라 환경변수로 받는다 — 인자로 받으면 이 스크립트 자신의 명령줄에도 들어 있어 pgrep이 자신을 앱으로 보고 끝내 버린다(Linux CI 실측). */
 const STOP_SH = `i=0
-while pgrep -f "$3" >/dev/null 2>&1 && [ $i -lt 60 ]; do sleep 0.5; i=$((i+1)); done
-pkill -9 -f "$3" 2>/dev/null || true`;
+while pgrep -f "$ANVIL_RUNNING" >/dev/null 2>&1 && [ $i -lt 60 ]; do sleep 0.5; i=$((i+1)); done
+pkill -9 -f "$ANVIL_RUNNING" 2>/dev/null || true`;
 
-/** OS별 교체 스크립트. 인자: $1 업데이트 파일, $2 target, $3 running(mac·Linux) */
+/** OS별 교체 스크립트. 인자: $1 업데이트 파일, $2 target. 환경변수 ANVIL_RUNNING: running(mac·Linux) */
 export const SCRIPTS = {
   darwin: {
     name: 'replace.sh',
@@ -36,7 +36,7 @@ set -e
 NEW="$(mktemp -d)"
 ditto -x -k "$1" "$NEW"
 # 번들 ID가 아니라 바꿀 그 .app에만, 실제로 돌 때만 종료를 청한다 — 같은 ID의 다른 설치본(옛 Tauri 앱 등)을 끄지 않게
-if pgrep -f "$3" >/dev/null 2>&1; then osascript -e "quit app \\"$2\\"" >/dev/null 2>&1 || true; fi
+if pgrep -f "$ANVIL_RUNNING" >/dev/null 2>&1; then osascript -e "quit app \\"$2\\"" >/dev/null 2>&1 || true; fi
 ${STOP_SH}
 rm -rf "$2"
 ditto "$NEW/Anvil.app" "$2"
@@ -61,7 +61,8 @@ chmod +x "$2"
 rem Anvil 업데이트(Windows): %1 설치 프로그램을 조용히 돌린다(설치 폴더 %2) — 남은 앱을 끄고, 설치 뒤 다시 연다\r
 taskkill /F /IM Anvil.exe >nul 2>&1\r
 ping -n 3 127.0.0.1 >nul\r
-if defined ANVIL_NO_RELAUNCH ("%~1" /S) else ("%~1" /S --force-run)\r
+rem 설치 프로그램은 call로 부른다 — 배치 파일을 call 없이 부르면 돌아오지 않는다(Windows CI 실측)\r
+if defined ANVIL_NO_RELAUNCH (call "%~1" /S) else (call "%~1" /S --force-run)\r
 del "%~1"\r
 `,
   },
@@ -73,6 +74,6 @@ export async function replace(file, inst = installed()) {
   const s = SCRIPTS[inst.platform];
   const script = join(dirname(file), s.name);
   writeFileSync(script, s.text, { mode: 0o755 });
-  const [cmd, args] = inst.platform === 'win32' ? ['cmd.exe', ['/d', '/c', script, file, inst.target]] : ['/bin/sh', [script, file, inst.target, inst.running]];
-  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  const [cmd, args] = inst.platform === 'win32' ? ['cmd.exe', ['/d', '/c', script, file, inst.target]] : ['/bin/sh', [script, file, inst.target]];
+  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true, env: { ...process.env, ANVIL_RUNNING: inst.running } }).unref();
 }

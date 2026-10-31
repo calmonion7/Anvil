@@ -26,9 +26,9 @@ function replace(platform, update, target, running) {
   const s = SCRIPTS[platform];
   const script = join(tmp, s.name);
   writeFileSync(script, s.text, { mode: 0o755 });
-  const env = { ...process.env, ANVIL_NO_RELAUNCH: '1' };
+  const env = { ...process.env, ANVIL_NO_RELAUNCH: '1', ANVIL_RUNNING: running ?? '' };
   if (platform === 'win32') execFileSync('cmd.exe', ['/d', '/c', script, copy, target], { env, stdio: 'inherit' });
-  else execFileSync('/bin/sh', [script, copy, target, running], { env, stdio: 'inherit' });
+  else execFileSync('/bin/sh', [script, copy, target], { env, stdio: 'inherit' });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let before;
