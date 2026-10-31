@@ -1,4 +1,4 @@
-# main push(버전이 새로 바뀌었을 때) 또는 v* 태그 → macOS·Windows·Ubuntu 빌드 → draft 릴리스 하나에 결과물·업데이터 json 첨부 → 모두 성공하면 공개.
+# main push(버전이 새로 바뀌었을 때) 또는 v* 태그 → macOS·Windows·Ubuntu에서 electron-builder 빌드 → 체크섬 목록과 함께 draft 릴리스에 첨부 → 공개.
 name: release
 
 on:
@@ -32,88 +32,75 @@ jobs:
           git tag "$v" && git push origin "$v"
           echo "tag=$v" >> "$GITHUB_OUTPUT"
 
+  # electron-builder로 네 대상(mac arm64·x64 dmg+zip, Windows x64 설치 프로그램, Linux x64 AppImage)을 만든다 — 서명 없음(ADR 261030-005852).
   build:
     needs: tag
     if: needs.tag.outputs.tag != ''
-    env:
-      TAG: ${{ needs.tag.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-            rust_targets: aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-            rust_targets: x86_64-apple-darwin
-          - platform: windows-latest
-            args: ""
-            rust_targets: ""
-          - platform: ubuntu-22.04
-            args: ""
-            rust_targets: ""
-    runs-on: ${{ matrix.platform }}
+          - os: macos-latest
+            args: --mac
+          - os: windows-latest
+            args: --win
+          - os: ubuntu-latest
+            args: --linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.tag.outputs.tag }}
-
-      - name: 리눅스 의존성
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_targets }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-
       - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder ${{ matrix.args }} --publish never
 
-      - name: 릴리스 노트
-        id: notes
-        shell: bash
-        run: |
-          f="docs/releases/${TAG}.md"
-          [ -s "$f" ] || { echo "::error::릴리스 노트 $f 가 없다"; exit 1; }
-          { echo "body<<__NOTES__"; cat "$f"; echo; echo "__NOTES__"; } >> "$GITHUB_OUTPUT"
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ needs.tag.outputs.tag }}
-          releaseName: Anvil ${{ needs.tag.outputs.tag }}
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          name: release-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+          if-no-files-found: error
 
-  # 네 빌드가 모두 성공해야 공개한다(도중에 공개하면 latest.json 이 덜 찬 채 업데이터에 보인다).
+  # 세 빌드가 모두 성공해야 공개한다 — 체크섬 목록(자체 업데이터가 검증에 쓴다)을 만들어 draft에 함께 붙이고, 다 붙은 뒤 공개한다.
   publish:
     needs: [tag, build]
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.tag.outputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: draft 공개
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # draft 는 tag_name 이 untagged-… 로 보여 태그로 못 찾는다 → build 의 releaseName 으로 찾고 태그를 붙여 공개.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: release-*
+          merge-multiple: true
+
+      - name: 체크섬 목록
+        working-directory: out
         run: |
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.draft and .name == \"Anvil $TAG\") | .id" | head -1)
-          [ -n "$id" ] || { echo "::error::$TAG draft 릴리스가 없다"; exit 1; }
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$TAG" -F draft=false -f make_latest=true --jq '.html_url'
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          n=$(ls | grep -c -E '\.(dmg|zip|exe|AppImage)$')
+          [ "$n" = 6 ] || { echo "::error::설치 파일이 6개가 아니다($n)"; exit 1; }
+
+      - name: draft 릴리스 → 첨부 → 공개
+        run: |
+          f="docs/releases/${TAG}.md"
+          [ -s "$f" ] || { echo "::error::릴리스 노트 $f 가 없다"; exit 1; }
+          gh release create "$TAG" out/* --draft --title "Anvil $TAG" --notes-file "$f" --verify-tag
+          gh release edit "$TAG" --draft=false --latest
+          gh release view "$TAG" --json assets --jq '.assets[].name'

@@ -1,14 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mockIpc } from "./mock-ipc";
+import { mockIpc, type Ipc } from "./mock-ipc";
 
 // 계획 #5 UAT (b)~(e)를 IPC 모킹으로 검사한다. (a) 창 기억은 실제 창이 필요해 사람 판정.
 
 const chip = (page: Page, label: string) => page.getByRole("button", { name: new RegExp(`^${label} \\d+$`) });
-const fills = (page: Page) =>
-  page.evaluate(() => (window as any).__calls.filter((c: any) => c.cmd === "session_fill").map((c: any) => c.args));
+let ipc: Ipc;
+const fills = async (_page: Page) => ipc.calls.filter((c) => c.cmd === "session_fill").map((c) => c.args);
 
 test.beforeEach(async ({ page }) => {
-  await mockIpc(page);
+  ipc = await mockIpc(page);
   await page.goto("/");
   await expect(chip(page, "백로그")).toBeVisible();
 });

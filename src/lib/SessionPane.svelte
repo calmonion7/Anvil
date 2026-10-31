@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import { call } from "./api";
   import Terminal from "./Terminal.svelte";
   import { t } from "./i18n.svelte";
   import { roleLabel, stateLabel, pipClass } from "./sessions";
@@ -52,7 +51,7 @@
     busy = true;
     error = "";
     try {
-      await invoke("session_start", { project, role });
+      await call("session_start", { project, role });
       onstarted?.();
     } catch (e) {
       error = String(e);
@@ -62,15 +61,9 @@
   }
 
   async function kill() {
-    const ok = await ask(t(`${projectName} ${roleLabel[role]} 세션을 끝낼까요? 진행 중인 claude 대화가 종료됩니다.`, `End the ${projectName} ${roleLabel[role]} session? The running claude conversation will be terminated.`), {
-      title: t("세션 종료", "End session"),
-      kind: "warning",
-      okLabel: t("세션 종료", "End session"),
-      cancelLabel: t("취소", "Cancel"),
-    });
-    if (!ok) return;
+    if (!confirm(t(`${projectName} ${roleLabel[role]} 세션을 끝낼까요? 진행 중인 claude 대화가 종료됩니다.`, `End the ${projectName} ${roleLabel[role]} session? The running claude conversation will be terminated.`))) return;
     try {
-      await invoke("session_kill", { name });
+      await call("session_kill", { name });
     } catch (e) {
       error = String(e);
     }

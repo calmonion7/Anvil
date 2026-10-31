@@ -1,16 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mockIpc, alpha } from "./mock-ipc";
+import { mockIpc, alpha, type Ipc } from "./mock-ipc";
 
 // 흐름도(FlowBoard): 노드 건수 · 세션 상태 → 흐르는 화살표 · .forge 변화 → 펄스+로그 · 동작 줄이기 · 어두움 고정
 
 /** 흐름도의 관(FlowLinks) */
 const link = (page: Page, id: string) => page.locator(`[data-link="${id}"]`);
-const emit = (page: Page, event: string, payload: unknown) =>
-  page.evaluate(([ev, p]) => (window as any).__emit(ev, p), [event, payload] as const);
+let ipc: Ipc;
+const emit = (_page: Page, event: string, payload: unknown) => ipc.emit(event, payload);
 const runWorking = { "/p/alpha-run": { state: "working", sessionId: null, alive: true } };
 
 test.beforeEach(async ({ page }) => {
-  await mockIpc(page);
+  ipc = await mockIpc(page);
   await page.goto("/");
   await expect(page.locator('[data-node="backlog"]')).toBeVisible();
 });
@@ -237,7 +237,7 @@ test("단축 버튼: 기본값 · 누르면 그 세션에 채움 · ＋로 추�
   const added = plan.getByRole("button", { name: "/forge:fg-status", exact: true });
   await expect(added).toBeVisible();
   await added.click();
-  const fills = await page.evaluate(() => (window as any).__calls.filter((c: any) => c.cmd === "session_fill").map((c: any) => c.args));
+  const fills = ipc.calls.filter((c) => c.cmd === "session_fill").map((c) => c.args);
   expect(fills.at(-1)).toMatchObject({ role: "plan", text: "/forge:fg-status" });
 
   await page.reload();
@@ -298,7 +298,7 @@ test("단축 버튼 추가 자동완성: 실제 명령 목록(+내장) · 거르
 });
 
 test("명령 목록은 프로젝트마다 처음 한 번만 읽는다", async ({ page }) => {
-  const count = () => page.evaluate(() => (window as any).__calls.filter((c: any) => c.cmd === "slash_commands").length);
+  const count = async () => ipc.calls.filter((c) => c.cmd === "slash_commands").length;
   await expect.poll(count).toBe(1);
   await page.getByRole("button", { name: /^empty main/ }).click();
   await expect.poll(count).toBe(2);

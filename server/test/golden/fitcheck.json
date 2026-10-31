@@ -1,0 +1,21 @@
+{
+  "name": "fitcheck",
+  "path": "<ROOT>",
+  "hasForge": true,
+  "root": {
+    "branch": "dev",
+    "git": true,
+    "rel": ".forge",
+    "warning": null
+  },
+  "headline": "백로그 0",
+  "active": null,
+  "loopState": null,
+  "backlog": [],
+  "executed": [],
+  "done": [],
+  "doneTotal": 0,
+  "followups": [],
+  "errors": [],
+  "drivingSession": null
+}

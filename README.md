@@ -11,8 +11,8 @@ forge(Claude Code 플러그인)로 진행하는 프로젝트들의 진행 상황
 Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 맨 위에 안내 띠가 뜨고(프로젝트를 아직 등록하지 않았어도), 그동안 세션을 여는 버튼은 꺼진다. 세 OS 모두 띠의 **[설치]** 한 번으로 빠진 것을 항목별로 설치하고 결과를 항목마다 보여 준다 — 관리자 암호도 Homebrew도 필요 없다(Windows는 WSL 안에 설치한다). 직접 설치했다면 띠의 **[다시 확인]** 을 누른다.
 
 - **macOS**: 개발자 도구(git)가 없으면 [설치]가 macOS 기본 설치 창을 띄우니, 창에서 설치를 마친 뒤 **[다시 확인]** → **[설치]** 를 한 번 더 누른다(forge 플러그인을 받는 데 git이 필요하다). claude CLI를 새로 설치했으면 이어서 뜨는 **[로그인]** 으로 터미널에서 한 번 로그인한다.
-- **Linux · Windows(WSL)**: git이 없으면 띠가 `sudo apt install git`(Windows는 `wsl -- sudo apt install git`)을 안내한다 — 관리자 암호가 필요해 직접 설치하고 **[다시 확인]** 을 누른다. claude 로그인은 Anvil에서 세션을 열면 claude가 안내한다.
-- **Windows**: WSL과 리눅스 배포판이 먼저 있어야 한다. 없으면 띠가 `wsl --install`(관리자 PowerShell, 다시 시작) 또는 `wsl --install -d Ubuntu`(사용자 이름 만들기까지)를 안내한다.
+- **Linux**: git이 없으면 `sudo apt install git`을 안내한다 — 관리자 암호가 필요해 직접 설치한다. claude 로그인은 Anvil에서 세션을 열면 claude가 안내한다.
+- **Windows**: WSL은 필요 없다. 처음 열 때 Git for Windows와 claude CLI를 사용자 범위로 자동 설치한다(claude가 Git Bash로 돈다).
 
 tmux 3.6a는 **세 OS 모두 앱에 들어 있어** 따로 설치하지 않는다(시스템에 tmux가 있어도 앱에 든 것을 쓴다). node는 22 이상이어야 하고, 더 낮은 node가 있으면 [설치]가 Anvil 전용 폴더(`~/.local/share/anvil/node`)에 v22를 따로 받아 Anvil 세션에서만 쓴다 — 사용자의 node는 바꾸지 않는다.
 
@@ -29,16 +29,18 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
 ## 설치
 
-[Releases](https://github.com/calmonion7/Anvil/releases) 에서 OS에 맞는 파일을 받는다.
+[Releases](https://github.com/calmonion7/Anvil/releases) 에서 OS에 맞는 파일을 받는다. 서명하지 않은 앱이라 **처음 한 번만** 경고를 넘긴다.
 
-- **macOS** (`.dmg`, Apple Silicon은 `aarch64`): 서명하지 않은 앱이다. 처음 열 때 막히면 Finder에서 우클릭 → 열기. "손상되었습니다"라고 나오면 터미널에서:
+- **macOS** (`Anvil-<버전>-mac-arm64.dmg` — Apple Silicon, Intel 맥은 `mac-x64.dmg`): dmg를 열어 Anvil을 응용 프로그램 폴더로 옮긴다. 처음 열 때 막히면 Finder에서 우클릭 → 열기. "손상되었습니다"라고 나오면 터미널에서:
   ```
   xattr -cr /Applications/Anvil.app
   ```
-- **Windows** (`.msi` / `-setup.exe`, 실험용): 앱은 윈도우에서, 세션은 **WSL 안**에서 돈다. WSL과 배포판(Ubuntu 등)만 있으면 나머지는 띠의 [설치]가 WSL 안에 넣는다. 프로젝트 폴더는 윈도우 경로(`C:\…`)든 WSL 경로(`\\wsl$\…`)든 된다. 알림은 윈도우 알림으로 뜬다(앱이 꺼져 있어도).
-- **Linux** (`.AppImage` / `.deb`, x86_64, 실험용): 띠의 [설치]로 준비물을 넣는다(git만 직접).
+- **Windows** (`Anvil-<버전>-win-x64.exe`): 실행하면 사용자 범위로 설치된다(관리자 권한 없음, WSL 필요 없음). 처음 한 번 SmartScreen 창이 뜨면 「추가 정보 → 실행」을 누른다. ARM Windows에서도 x64 에뮬레이션으로 돈다. 프로젝트 폴더는 윈도우 경로(`C:\…`)를 쓴다.
+- **Linux** (`Anvil-<버전>-linux-x86_64.AppImage`): 실행 권한을 주고(`chmod +x`) 실행한다.
 
-설치한 뒤에는 새 버전이 나오면 앱 상단 띠의 [업데이트·재시작] 으로 갱신한다.
+처음 열면 「준비 중」 화면에서 빠진 준비물(claude CLI·forge 플러그인, Windows는 Git for Windows)을 자동으로 설치한 뒤 보드로 넘어간다.
+
+**업데이트**: 새 버전이 나오면 보드 위 띠에 [업데이트]가 뜬다. 누르면 앱이 새 버전으로 다시 열리고, 열려 있던 세션은 대화째 이어진다. 작업 중인 세션이 있으면 그 세션이 끝난 뒤 바뀐다. [⚙ 설정] 의 [다시 확인]으로 바로 확인할 수도 있다.
 
 ## 쓰면서 알아둘 것
 
@@ -65,15 +67,14 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 ```
 npm ci
 npm run tauri dev      # 개발 실행
+npm run dev:web        # 웹 개발 실행: Node 서버 + vite 화면(찍히는 「Anvil 개발:」 주소 http://127.0.0.1:1420/?token=… 을 연다)
+npm run dev:app        # 데스크톱 앱 개발 실행: vite 화면 + Electron 창(서버는 설치된 앱처럼 따로 떠 창을 닫아도 남는다)
+npm run test:app       # Electron 앱 스모크(먼저 npm run build) · npm run dist:mac → dist/에 mac arm64 .dmg
 npm run check          # 타입 검사
 cd src-tauri && cargo test
-scripts/install-app.sh # 이 맥에 빌드해 설치(main을 따라가는 로컬 설치본)
 scripts/release.sh X.Y.Z  # 버전 맞추고 커밋 + 태그 (push는 직접). 릴리스 노트 docs/releases/vX.Y.Z.md 를 먼저 커밋
 # 또는: 버전(5개 파일) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
-gh workflow run e2e-desktop.yml --ref <브랜치>  # 실제 앱 첫 실행 흐름을 Linux·Windows 러너에서(버전 PR에서는 자동)
 ```
-
-e2e-desktop 결과는 `gh run download <id>` 로 받는다 — `e2e-desktop-linux`·`e2e-desktop-windows` 아래 시나리오별 단계 스크린샷과 `app.log`·환경 로그. 하네스(`e2e-desktop/`)는 Linux에서 tauri-driver(WebdriverIO)로, Windows에서는 웹뷰 디버그 포트를 연 테스트 빌드(`e2e-desktop/tauri.e2e.json`)에 Playwright로 붙는다 — macOS에서는 돌지 않는다.
 
 ## 라이선스
 
