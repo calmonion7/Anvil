@@ -2,6 +2,7 @@
 author: taebro
 decided: 2026-10-18 19:05
 ---
+Status: Superseded by ADR-261030-005852 (Electron 데스크톱 앱 — 6/6에서 은퇴)
 # 자동 업데이트는 이 Mac의 launchd 폴링과 로컬 빌드로 하고, 새 버전은 다음 실행 때 반영한다
 
 main에 머지되면 사람이 손대지 않아도 설치본이 따라와야 한다. 이 Mac의 launchd 에이전트가 5분마다 `git ls-remote`로 main SHA만 비교하고, 바뀌었을 때만 전용 빌드 클론에서 pull·빌드한다. 빌드가 성공하면 실행 중인 앱을 끄지 않고 `/Applications/Anvil.app` 번들만 바꾼다. 앱은 디스크의 번들이 자기와 다른 커밋임을 알아채 "새 버전 준비됨 · 재시작" 띠를 띄운다. task 7에서 정한 "사람이 직접 실행, 자동 훅 없음"을 대체한다.

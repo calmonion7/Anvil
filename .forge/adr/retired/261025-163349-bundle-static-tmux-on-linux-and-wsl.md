@@ -2,6 +2,7 @@
 author: taebro
 decided: 2026-10-25 16:33
 ---
+Status: Superseded by ADR-261030-005852 (Electron 데스크톱 앱 — 6/6에서 은퇴)
 # Linux·Windows(WSL)도 정적 tmux를 내장하고, WSL에는 앱이 버전 이름으로 복사해 쓴다
 
 ADR 261024-202909는 macOS만 tmux를 내장하고 Windows(WSL)·Linux는 시스템 tmux를 쓰게 했다. 그러면 두 OS에서 [설치]가 tmux를 깔려면 `sudo apt/dnf …`가 필요하다. 비밀번호를 받을 창, 배포판마다 다른 패키지 관리자, 터미널 찾기가 모두 따라붙는다. 그래서 두 OS도 macOS처럼 **musl로 정적 링크한 tmux 3.6a**를 미리 빌드해 커밋하고 항상 그것을 쓴다. Linux 배포판(x86_64)은 앱 번들에 넣는다. Windows 배포판은 x86_64·aarch64 두 벌을 넣고, WSL이 있으면 앱이 배포판의 `uname -m`에 맞는 것을 `~/.local/share/anvil/bin/tmux-<버전>`으로 **한 번 복사해 그 경로를 실행**한다. 버전이 파일 이름에 들어가 있어서, 자동 업데이트가 설치 폴더를 바꿔도 이미 떠 있는 `tmux -L anvil` 서버의 실행 파일은 바뀌지 않는다. 이로써 tmux는 어느 OS에서도 준비물이 아니고, 준비물 설치에 관리자 권한이 필요한 항목이 없다.
