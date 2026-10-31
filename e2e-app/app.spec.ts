@@ -48,13 +48,13 @@ async function launchApp(env: Record<string, string>) {
 }
 /**
  * 앱을 끈다(Cmd+Q처럼 app.quit). Playwright close()는 앱의 출력 파이프가 닫히기까지 기다리는데, Linux CI에서는 끝나지 않았다(실측) —
- * 프로세스가 끝나는 것만 기다린다. 10초 안에 안 끝나면 남은 Electron 프로세스를 찍어 실패한다.
+ * 프로세스가 끝나는 것만 기다린다. 30초(느린 Windows 러너) 안에 안 끝나면 남은 Electron 프로세스를 찍어 실패한다.
  */
 async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
   const proc = app.process();
   const exited = new Promise<boolean>((r) => (proc.exitCode !== null || proc.signalCode !== null ? r(true) : proc.once("exit", () => r(true))));
   await app.evaluate(({ app }) => app.quit()).catch(() => {}); // 끝나며 연결이 끊겨도 된다
-  const ok = await Promise.race([exited, new Promise<boolean>((r) => setTimeout(() => r(false), 10_000))]);
+  const ok = await Promise.race([exited, new Promise<boolean>((r) => setTimeout(() => r(false), 30_000))]);
   if (!ok && process.platform !== "win32") console.log(execSync("ps -eo pid,ppid,command | grep -i -E 'electron|anvil' | grep -v grep || true").toString());
   expect(ok, "앱이 종료되어야 한다").toBe(true);
 }
