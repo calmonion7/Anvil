@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SCRIPTS, installed } from '../replace.js';
+import { SCRIPTS, helperEnv, installed } from '../replace.js';
 
 function tempDir(fn) {
   const d = mkdtempSync(join(tmpdir(), 'anvil-replace-'));
@@ -46,6 +46,11 @@ test('mac 스크립트는 번들 ID가 아니라 바꿀 .app 경로에만, 돌 �
 
 test('남은 앱을 찾는 패턴은 인자가 아니라 환경변수로 받는다 — 인자면 스크립트 자신이 걸려 스스로를 끝낸다(Linux CI 실측)', () => {
   for (const p of ['darwin', 'linux']) assert.doesNotMatch(SCRIPTS[p].text, /\$3/, p);
+});
+
+test('교체 스크립트에는 ELECTRON_RUN_AS_NODE를 넘기지 않는다 — 물려받으면 다시 연 앱이 창 없는 node로 떠 바로 꺼진다(mac UAT 실측)', () => {
+  const env = helperEnv({ PATH: '/bin', ELECTRON_RUN_AS_NODE: '1', HOME: '/h' }, '/A.app/Contents/');
+  assert.deepEqual(env, { PATH: '/bin', HOME: '/h', ANVIL_RUNNING: '/A.app/Contents/' });
 });
 
 test('Windows 스크립트는 설치 프로그램을 call로 불러 돌아와서 지운다', () => {

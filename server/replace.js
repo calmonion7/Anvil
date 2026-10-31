@@ -68,6 +68,14 @@ del "%~1"\r
   },
 };
 
+/** 교체 스크립트의 환경 — 서버의 ELECTRON_RUN_AS_NODE는 뺀다. 물려받으면 스크립트가 다시 연 앱(mac open·Linux 실행·Windows --force-run)이
+ *  창 없는 node로 떠 바로 꺼진다(mac UAT 2026-10-31 실측). */
+export function helperEnv(env, running) {
+  const out = Object.fromEntries(Object.entries(env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'));
+  out.ANVIL_RUNNING = running;
+  return out;
+}
+
 /** 교체 스크립트를 업데이트 파일 옆에 쓰고 서버와 떨어진 프로세스로 띄운다(서버는 곧 내려간다). */
 export async function replace(file, inst = installed()) {
   if (!inst) throw new Error('not an installed app');
@@ -75,5 +83,5 @@ export async function replace(file, inst = installed()) {
   const script = join(dirname(file), s.name);
   writeFileSync(script, s.text, { mode: 0o755 });
   const [cmd, args] = inst.platform === 'win32' ? ['cmd.exe', ['/d', '/c', script, file, inst.target]] : ['/bin/sh', [script, file, inst.target]];
-  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true, env: { ...process.env, ANVIL_RUNNING: inst.running } }).unref();
+  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true, env: helperEnv(process.env, inst.running) }).unref();
 }
