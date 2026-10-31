@@ -59,7 +59,14 @@ async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
   const ok = await Promise.race([exited, new Promise<boolean>((r) => setTimeout(() => r(false), 30_000))]);
   if (!ok) {
     if (process.platform !== "win32") console.log(execSync("ps -eo pid,ppid,command | grep -i -E 'electron|anvil' | grep -v grep || true").toString());
+    else console.log(execSync('tasklist /fi "IMAGENAME eq electron.exe"').toString());
     console.log(`⚠ 앱(${proc.pid})이 app.quit 뒤 30초 안에 끝나지 않아 강제로 끝낸다`);
+    // Windows의 kill은 주 프로세스만 끝내 렌더러 등 보조 프로세스가 출력 파이프를 쥔 채 남는다 — 워커 정리가 60초를 넘겼다(CI 실측).
+    // 보조 프로세스(명령줄에 --type=)도 함께 끝낸다. 트리째(taskkill /T)는 안 된다 — detached 서버도 부모 PID가 앱이라 같이 꺼진다.
+    if (process.platform === "win32") {
+      const helpers = `Get-CimInstance Win32_Process -Filter 'ParentProcessId=${proc.pid}' | Where-Object { $_.CommandLine -like '*--type=*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+      execSync(`powershell -NoProfile -Command "${helpers}"`, { stdio: "inherit" });
+    }
     proc.kill("SIGKILL");
     await exited;
   }
