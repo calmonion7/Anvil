@@ -4,7 +4,12 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { forgeInstalled, forgeInstalledVersion, forgeLatestVersion, forgePluginFrom, installPlan, installWith, missing, needsMessage, startInstall } from '../deps.js';
+import { forgeInstalled, forgeInstalledVersion, forgeLatestVersion, forgePluginFrom, installPlan, installWith, missing, needsMessage, ownNode, startInstall } from '../deps.js';
+
+test('Electron 안에서 돌면 node는 실행해 보지 않고 Electron 자신의 버전을 쓴다(Windows 대체 실행 파일 node.cmd는 execFile로 못 부른다)', () => {
+  assert.equal(ownNode({ electron: '38.1.0', node: '22.19.0' }), 'v22.19.0');
+  assert.equal(ownNode({ node: '22.19.0' }), null, '일반 node면 실행해서 확인한다');
+});
 
 function tempHome(fn) {
   const d = mkdtempSync(join(tmpdir(), 'anvil-deps-'));

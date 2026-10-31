@@ -70,16 +70,21 @@ async function probeOut(prog, args) {
   }
 }
 
+/** Electron 안에서 돌면 node는 Electron 자신이라(env.js setupNode) 실행해 보지 않고 그 버전을 쓴다 — Windows의 대체 실행 파일은
+ *  node.cmd라 execFile로 부를 수 없어 늘 빠진 것으로 보였다(VM UAT 2026-10-31). 일반 node면 null(실행해서 확인). */
+export const ownNode = (versions = process.versions) => (versions.electron ? `v${versions.node}` : null);
+
 async function status() {
   // 테스트 전용: CI의 앱 스모크는 준비물이 없는 러너에서 돈다 — 「준비 중」이 보드를 가리고 자동 설치가 러너 홈에 실제로 깔지 않게
   if (process.env.ANVIL_SKIP_DEPS) return { needs: [], message: null, installable: false, platform };
+  const own = ownNode();
   const progs = [
-    ['node', ['--version']],
+    ...(own ? [] : [['node', ['--version']]]),
     ['claude', ['--version']],
     platform === 'macos' ? ['xcode-select', ['-p']] : ['git', ['--version']],
   ];
   const outs = new Map(await Promise.all(progs.map(async ([p, a]) => [p, await probeOut(p, a)])));
-  const needs = missing((p) => outs.get(p) != null, outs.get('node'), forgeInstalled(claudeHome()), platform);
+  const needs = missing((p) => outs.get(p) != null, own ?? outs.get('node'), forgeInstalled(claudeHome()), platform);
   // installable은 [설치]가 없어져 늘 false — 화면이 쓰던 모양은 그대로 둔다.
   return { needs, message: needs.length ? needsMessage(needs, platform) : null, installable: false, platform };
 }
