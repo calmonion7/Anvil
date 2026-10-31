@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 릴리스 준비: 버전 세 곳(package.json · tauri.conf.json · Cargo.toml/lock)을 맞추고 커밋 + v<버전> 태그.
+# 릴리스 준비: 버전(package.json + package-lock.json)을 맞추고 커밋 + v<버전> 태그.
 # push는 하지 않는다 — 태그 push가 곧 3-OS 릴리스 빌드(release.yml)라 사람이 한다.
 #   사용: scripts/release.sh <버전>      예) scripts/release.sh 0.2.0
 #   현재 버전과 같으면 커밋 없이 태그만 단다(첫 릴리스).
@@ -21,15 +21,10 @@ NOTES="docs/releases/$TAG.md"
 CUR="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json | head -1)"
 if [ "$CUR" != "$VER" ]; then
   npm version "$VER" --no-git-tag-version >/dev/null # package.json + package-lock.json
-  sed -i '' "s/^  \"version\": \"$CUR\",$/  \"version\": \"$VER\",/" src-tauri/tauri.conf.json
-  sed -i '' "s/^version = \"$CUR\"$/version = \"$VER\"/" src-tauri/Cargo.toml
-  # Cargo.lock 의 anvil 항목만 새 버전으로(네트워크 없이). cargo가 PATH에 없어도 rustup으로 부른다.
-  command -v cargo >/dev/null || PATH="$(dirname "$(rustup which cargo)"):$PATH"
-  (cd src-tauri && cargo update -p anvil --offline -q)
-  for f in package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock; do
+  for f in package.json package-lock.json; do
     grep -q "\"$VER\"" "$f" || fail "$f 버전이 안 바뀌었다"
   done
-  git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+  git add package.json package-lock.json
   git commit -q -m "release: $TAG"
   echo "버전 $CUR → $VER 커밋"
 else
