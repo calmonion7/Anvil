@@ -65,9 +65,10 @@
 - 등록한 저장소의 `.forge/*.md`를 `marked` → `{@html}`로 정제 없이 그린다. 스크립트는 CSP가 막지만, 속이는 HTML(가짜 버튼·링크)은 그대로 보인다. DOMPurify 같은 정제기를 넣을지 정할 것.
   Evidence: S6 보안 리뷰 major 2의 관련 항목, `src/routes/+page.svelte:353,658`. 이번 변경 전부터 있던 것.
 
-<!-- followup: fu-99935ba0c75e | source: electron-app-1of6 | task: 19 | date: 2026-10-30 | status: open | taken: - -->
+<!-- followup: fu-99935ba0c75e | source: electron-app-1of6 | task: 19 | date: 2026-10-30 | status: dismissed | taken: - -->
 - `cargo test`의 `session::tests::hook_notifies_only_when_app_is_off_wsl_and_mac`이 간헐 실패한다(5번 중 2번, 3번 중 1번). 백그라운드 알림을 300ms만 기다리기 때문이다. Tauri는 6/6에서 걷어 내므로 그때까지 DoD의 "cargo test 통과"를 이 테스트를 빼고 판정할지 정할 것.
   Evidence: 실측 2026-10-30, `src-tauri/src/session.rs:794`.
+  Dismissed 2026-11-01(사람 결정): 데스크톱 앱 6/6에서 `src-tauri/`(Rust 코드·`cargo test`)를 지워 이 테스트가 없다.
 
 <!-- followup: fu-b33fc769ce27 | source: electron-app-1of6 | task: 19 | date: 2026-10-30 | status: open | taken: - -->
 - 패키징된 앱 점검(설치된 바이너리로 asar 속 `server/main.js` 기동 → `hooks.json`의 훅 명령 실행 → node-pty 생성)을 스크립트로 레포에 넣고, 5/6 릴리스 CI에서 세 OS 산출물에 돌릴 것. 이번에는 임시 스크립트로만 했다.
