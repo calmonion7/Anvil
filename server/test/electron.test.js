@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 const electron = createRequire(import.meta.url)('electron'); // node에서 부르면 실행 파일 경로
 const asNode = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
-const skip = process.platform === 'win32'; // Windows는 4/6
+const skip = false; // Windows도 돈다(데스크톱 앱 4/6) — 세션 흐름은 node.cmd 대체 실행 파일로 훅을 부른다
 
 function freePort() {
   return new Promise((resolve) => {

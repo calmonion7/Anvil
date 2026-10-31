@@ -15,6 +15,21 @@ npmRebuild: false
 # 네이티브 모듈(.node·spawn-helper)은 asar 안에서 실행할 수 없다.
 asarUnpack:
   - node_modules/node-pty/**
+# 아이콘은 Tauri 폴더 것을 쓴다 — 6/6에서 src-tauri/를 지울 때 옮긴다.
+win:
+  icon: src-tauri/icons/icon.ico
+  target:
+    - target: nsis # 사용자 범위 설치(관리자 권한 없음). 서명 없음 — 처음 한 번 SmartScreen 「추가 정보 → 실행」
+      arch: x64
+nsis:
+  oneClick: true
+  perMachine: false
+linux:
+  icon: src-tauri/icons/icon.png
+  category: Development
+  target:
+    - target: AppImage
+      arch: x64
 mac:
   icon: src-tauri/icons/icon.icns
   identity: null

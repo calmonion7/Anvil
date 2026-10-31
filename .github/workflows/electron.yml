@@ -1,0 +1,62 @@
+# 데스크톱 앱(Electron)을 세 OS에서 실제로 띄워 본다 — 서버 테스트 + Playwright `_electron` 스모크(세션·pty·앱 종료 뒤 서버 생존·복구).
+# 재시도는 끄고 첫 시도 결과만 본다(회고 task 17). Windows·Linux 설치 파일은 VM 손 확인용 산출물로 올린다.
+name: electron
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # Linux는 node-pty prebuild가 없어 여기서 컴파일된다(N-API라 Electron에서도 그대로 돈다)
+      - run: npm ci
+      - run: npm run build
+
+      - name: 서버 테스트
+        run: node --test server/
+
+      - name: Electron 스모크(Linux — 가상 화면)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:app
+
+      - name: Electron 스모크
+        if: runner.os != 'Linux'
+        run: npm run test:app
+
+      - name: 설치 파일(Windows)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win
+
+      - name: 설치 파일(Linux)
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'macOS'
+        with:
+          name: installer-${{ runner.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results
+          if-no-files-found: ignore

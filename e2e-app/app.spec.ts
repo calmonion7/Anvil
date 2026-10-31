@@ -19,6 +19,23 @@ function freePort(): Promise<number> {
   });
 }
 
+/** 앱 실행 인자 — Linux CI(컨테이너·xvfb)는 Chromium 샌드박스를 켤 수 없다 */
+const appArgs = [...(process.platform === "linux" ? ["--no-sandbox"] : []), join(root, "electron/main.js")];
+
+/** claude 자리에 넣을 가짜 claude 래퍼(Windows는 .cmd — 세션이 cmd.exe로 감싸 띄운다) */
+function fakeClaude(dir: string) {
+  const js = join(root, "server/test/fake-claude.js");
+  if (process.platform === "win32") {
+    const f = join(dir, "claude.cmd");
+    writeFileSync(f, `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`);
+    return f;
+  }
+  const f = join(dir, "claude");
+  writeFileSync(f, `#!/bin/sh\nexec '${process.execPath}' '${js}' "$@"\n`);
+  chmodSync(f, 0o755);
+  return f;
+}
+
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -37,7 +54,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     ANVIL_CLAUDE: join(root, "server/test/fake-claude.js"),
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const launch = () => electron.launch({ args: [join(root, "electron/main.js")], env });
+  const launch = () => electron.launch({ args: appArgs, env });
   const serverPid = () => JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
   const board = (win: Awaited<ReturnType<Awaited<ReturnType<typeof launch>>["firstWindow"]>>) =>
     expect(win.getByRole("button", { name: "＋ 프로젝트 추가" }).first()).toBeVisible({ timeout: 30_000 });
@@ -83,9 +100,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
   mkdirSync(project);
   mkdirSync(dataDir);
   writeFileSync(join(dataDir, "projects.json"), JSON.stringify([project]));
-  const fake = join(dir, "claude");
-  writeFileSync(fake, `#!/bin/sh\nexec '${process.execPath}' '${join(root, "server/test/fake-claude.js")}' "$@"\n`);
-  chmodSync(fake, 0o755);
+  const fake = fakeClaude(dir);
   const out = join(dir, "fake-out.json");
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
@@ -95,7 +110,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     FAKE_OUT: out,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const launch = () => electron.launch({ args: [join(root, "electron/main.js")], env });
+  const launch = () => electron.launch({ args: appArgs, env });
   const serverPid = () => JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
   type Win = Awaited<ReturnType<Awaited<ReturnType<typeof launch>>["firstWindow"]>>;
   type States = Record<string, { alive: boolean; sessionId: string | null }>;
@@ -114,6 +129,23 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     const name = (await call(win, "session_start", { project, role: "plan" })) as string;
     await expect.poll(async () => (await sessionOf(win, name))?.sessionId, { timeout: 15_000 }).toBeTruthy();
     const sid = (await sessionOf(win, name)).sessionId;
+    // 세션 터미널에 pty 출력이 온다(가짜 claude의 `ready>` — Windows는 ConPTY)
+    const screen = await win.evaluate(
+      (name) =>
+        new Promise<string>((resolve) => {
+          const ws = new WebSocket(`ws://${location.host}/ws`);
+          let text = "";
+          const done = () => (ws.close(), resolve(text));
+          ws.onopen = () => ws.send(JSON.stringify({ type: "term_open", id: 99, name, cols: 80, rows: 24 }));
+          ws.onmessage = (e) => {
+            const m = JSON.parse(e.data);
+            if (m.type === "term" && m.id === 99 && (text += m.data).includes("ready>")) done();
+          };
+          setTimeout(done, 10_000);
+        }),
+      name,
+    );
+    expect(screen).toContain("ready>");
     pid = serverPid();
     await first.close();
     process.kill(pid, "SIGKILL");

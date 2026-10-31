@@ -27,6 +27,7 @@ async function ensureServer() {
   const log = openSync(logFile, 'a', 0o600); // 첫 줄에 토큰 붙은 주소가 찍힌다
   spawn(process.execPath, [serverMain], {
     detached: true,
+    windowsHide: true, // Windows에서 서버용 콘솔 창이 뜨지 않게
     stdio: ['ignore', log, log],
     cwd: homedir(),
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

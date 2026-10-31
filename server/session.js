@@ -5,7 +5,7 @@
 // 열린 세션은 `restore.json`에 남겨, 서버가 내려간 뒤(재부팅·종료 신호) 다음 서버가 `claude --resume`으로 다시 띄운다.
 import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, watch, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { claudeHome, runPath, setupNode } from './env.js';
+import { claudeHome, findCommand, runPath, setupNode, spawnTarget, withPath } from './env.js';
 import { tr } from './i18n.js';
 import pty from './pty.js';
 import { collect } from './slash.js';
@@ -227,7 +227,7 @@ const lang = () => (process.env.LANG?.includes('UTF-8') ? process.env.LANG : 'en
 function sessionEnv(name, title) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !PARENT_CLAUDE.test(k) && !SERVER_ONLY.test(k)));
   // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 CC_SESSION_NAME을 다시 붙인다.
-  return { ...env, ANVIL_SESSION: name, PATH: runPath(), LANG: lang(), TERM: 'xterm-256color', CC_SESSION_NAME: title };
+  return { ...withPath(env, runPath()), ANVIL_SESSION: name, LANG: lang(), TERM: 'xterm-256color', CC_SESSION_NAME: title };
 }
 
 /** `resume`: 이어 열 claude 대화 ID(복구) — 없으면 새 대화 */
@@ -262,16 +262,15 @@ function start(ctx, project, role, resume = null) {
   rmSync(join(dir, 'sessions', `${name}.json`), { force: true });
   rmSync(join(dir, 'models', `${name}.json`), { force: true });
   const [title] = sessionTitle(project, role);
-  // ANVIL_CLAUDE: claude 자리에 다른 실행 파일(테스트의 가짜 claude)
+  // ANVIL_CLAUDE: claude 자리에 다른 실행 파일(테스트의 가짜 claude). Windows는 실행 파일을 세션 PATH에서 찾아 경로로 넘긴다(env.js findCommand).
+  const env = sessionEnv(name, title);
+  const [file, args] = spawnTarget(
+    findCommand(process.env.ANVIL_CLAUDE || 'claude', env.PATH),
+    claudeArgs(title, roleModel(dir, role), join(dir, 'hooks.json'), resume),
+  );
   let p;
   try {
-    p = pty.spawn(process.env.ANVIL_CLAUDE || 'claude', claudeArgs(title, roleModel(dir, role), join(dir, 'hooks.json'), resume), {
-      name: 'xterm-256color',
-      cols: 200,
-      rows: 50,
-      cwd: project,
-      env: sessionEnv(name, title),
-    });
+    p = pty.spawn(file, args, { name: 'xterm-256color', cols: 200, rows: 50, cwd: project, env });
   } catch (e) {
     throw new Error(`${tr('claude를 실행할 수 없습니다: ', 'Cannot run claude: ')}${e.message}`);
   }

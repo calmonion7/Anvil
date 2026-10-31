@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { runPath } from '../env.js';
 import { commands as c, init, sessionName } from '../session.js';
 
-const skip = process.platform === 'win32'; // 가짜 claude를 sh로 감싼다(Windows 확인은 3/4)
+const skip = false; // Windows는 가짜 claude를 .cmd로 감싼다(데스크톱 앱 4/6)
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'anvil-session-')));
 const dataDir = join(root, 'data');
 const registered = new Set();
@@ -20,12 +20,15 @@ const ctx = {
   registered: (p) => registered.has(p),
 };
 
-const fake = join(root, 'claude');
 // Electron 런타임에서 돌 때(electron.test.js) process.execPath는 Electron이다 — 세션 환경에는 ELECTRON_RUN_AS_NODE가 없으므로
-// 래퍼가 직접 붙이고, 받은 값은 FAKE_RUN_AS_NODE로 남긴다.
+// 래퍼가 직접 붙이고, 받은 값은 FAKE_RUN_AS_NODE로 남긴다. Windows는 .cmd 래퍼(세션이 cmd.exe로 감싸 띄운다 — env.js spawnTarget).
+const fakeJs = join(import.meta.dirname, 'fake-claude.js');
+const fake = join(root, process.platform === 'win32' ? 'claude.cmd' : 'claude');
 writeFileSync(
   fake,
-  `#!/bin/sh\nFAKE_RUN_AS_NODE="\${ELECTRON_RUN_AS_NODE-unset}" ELECTRON_RUN_AS_NODE=1 exec '${process.execPath}' '${join(import.meta.dirname, 'fake-claude.js')}' "$@"\n`,
+  process.platform === 'win32'
+    ? `@echo off\r\nif defined ELECTRON_RUN_AS_NODE (set "FAKE_RUN_AS_NODE=%ELECTRON_RUN_AS_NODE%") else (set "FAKE_RUN_AS_NODE=unset")\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${fakeJs}" %*\r\n`
+    : `#!/bin/sh\nFAKE_RUN_AS_NODE="\${ELECTRON_RUN_AS_NODE-unset}" ELECTRON_RUN_AS_NODE=1 exec '${process.execPath}' '${fakeJs}' "$@"\n`,
 );
 chmodSync(fake, 0o755);
 process.env.ANVIL_CLAUDE = fake;

@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { claudeHome, runPath } from './env.js';
+import { claudeHome, runPath, withPath } from './env.js';
 import { tr } from './i18n.js';
 
 const run = promisify(execFile);
@@ -64,7 +64,7 @@ export function needsMessage(needs, os) {
 /** 확인용 실행 — 성공하면 표준 출력, 아니면 null. */
 async function probeOut(prog, args) {
   try {
-    return (await run(prog, args, { env: { ...process.env, PATH: runPath() }, timeout: 15_000 })).stdout;
+    return (await run(prog, args, { env: withPath(process.env, runPath()), timeout: 15_000, windowsHide: true })).stdout;
   } catch {
     return null;
   }
@@ -171,7 +171,7 @@ export async function installWith(needs, os, x, { onChange = () => {}, wait = wa
 
 /** 실제 실행기 — Anvil PATH(설치 직후의 ~/.local/bin claude 포함)로, 설치 하나에 최대 10분 */
 const exec = async (prog, args) =>
-  (await run(prog, args, { env: { ...process.env, PATH: runPath() }, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 })).stdout;
+  (await run(prog, args, { env: withPath(process.env, runPath()), timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true })).stdout;
 
 /** 지금 진행(없으면 null): { running, items } — 다시 붙는 화면이 `deps_install`로 받는다 */
 let progress = null;
@@ -262,7 +262,7 @@ export const commands = {
   /** 사용자 범위 forge를 최신으로. 열린 claude 세션은 재시작해야 적용된다. */
   forge_plugin_update: async () => {
     try {
-      await run('claude', ['plugin', 'update', FORGE_PLUGIN], { env: { ...process.env, PATH: runPath() } });
+      await run('claude', ['plugin', 'update', FORGE_PLUGIN], { env: withPath(process.env, runPath()), windowsHide: true });
       return null;
     } catch (e) {
       throw new Error(String(e.stderr ?? '').trim().split('\n').pop() || tr('업데이트 실패', 'Update failed'));

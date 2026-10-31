@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const skip = process.platform === 'win32'; // 가짜 claude를 sh로 감싼다(Windows는 4/6)
+const skip = process.platform === 'win32'; // 가짜 claude를 sh로 감싸고 POSIX 신호·pgrep에 기댄다 — Windows 세션은 session.test가 본다
 const main = join(import.meta.dirname, '../main.js');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
