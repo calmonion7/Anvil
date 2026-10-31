@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { snapshot } from '../forge.js';
 
 const here = import.meta.dirname;
-const fixtures = join(here, '../../src-tauri/tests/fixtures');
+const fixtures = join(here, 'fixtures');
 
 // (골든 이름, 픽스처 폴더, `.git/HEAD` 내용 — null이면 git 아님) — golden.rs의 CASES와 같다.
 const cases = [

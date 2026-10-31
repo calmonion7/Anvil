@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import * as forge from '../forge.js';
 import { parseFollowups, readHead, resolveRoot, snapshot, snapshotWithHead, statusField } from '../forge.js';
 
-const fixtures = join(import.meta.dirname, '../../src-tauri/tests/fixtures');
+const fixtures = join(import.meta.dirname, 'fixtures');
 const fixture = (name) => join(fixtures, name);
 const branch = (b) => ({ type: 'branch', branch: b });
 const DETACHED = { type: 'detached' };

@@ -1,5 +1,3 @@
-// Tauri doesn't have a Node.js server to do proper SSR
-// so we use adapter-static with a fallback to index.html to put the site in SPA mode
+// 화면은 Node 서버(server/)가 정적 파일로만 낸다(SSR 없음) — svelte.config.js의 adapter-static SPA 설정과 짝.
 // See: https://svelte.dev/docs/kit/single-page-apps
-// See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
 export const ssr = false;
