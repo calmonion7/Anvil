@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test } from "@playwright/test";
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -46,6 +46,18 @@ async function launchApp(env: Record<string, string>) {
   app.process().stderr?.on("data", (d) => process.stdout.write(`${tag} ${d}`));
   return app;
 }
+/**
+ * 앱을 끈다(Cmd+Q처럼 app.quit). Playwright close()는 앱의 출력 파이프가 닫히기까지 기다리는데, Linux CI에서는 끝나지 않았다(실측) —
+ * 프로세스가 끝나는 것만 기다린다. 10초 안에 안 끝나면 남은 Electron 프로세스를 찍어 실패한다.
+ */
+async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
+  const proc = app.process();
+  const exited = new Promise<boolean>((r) => (proc.exitCode !== null || proc.signalCode !== null ? r(true) : proc.once("exit", () => r(true))));
+  await app.evaluate(({ app }) => app.quit()).catch(() => {}); // 끝나며 연결이 끊겨도 된다
+  const ok = await Promise.race([exited, new Promise<boolean>((r) => setTimeout(() => r(false), 10_000))]);
+  if (!ok && process.platform !== "win32") console.log(execSync("ps -eo pid,ppid,command | grep -i -E 'electron|anvil' | grep -v grep || true").toString());
+  expect(ok, "앱이 종료되어야 한다").toBe(true);
+}
 /** 단계 표시 — 시간 초과 때 마지막으로 찍힌 단계가 멈춘 곳이다 */
 const step = (s: string) => console.log(`▶ ${s}`);
 
@@ -80,7 +92,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     await board(await first.firstWindow());
     pid = serverPid();
     step("3. 앱 종료");
-    await first.close();
+    await quitApp(first);
     step("4. 앱 종료됨");
     await new Promise((r) => setTimeout(r, 1000));
     expect(alive(pid), "앱을 끈 뒤에도 서버가 살아 있어야 한다").toBe(true);
@@ -105,7 +117,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
       .toBe(200);
     await expect(win2.getByText("서버가 다시 시작되었습니다")).toHaveCount(0);
     step("6. 두 번째 앱 종료");
-    await second.close();
+    await quitApp(second);
   } finally {
     if (pid && alive(pid)) process.kill(pid);
     rmSync(dataDir, { recursive: true, force: true });
@@ -171,7 +183,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     expect(screen).toContain("ready>");
     pid = serverPid();
     step("3. 앱 종료");
-    await first.close();
+    await quitApp(first);
     step("4. 앱 종료됨");
     process.kill(pid, "SIGKILL");
     await expect.poll(() => alive(pid)).toBe(false);
@@ -184,7 +196,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     const args = JSON.parse(readFileSync(out, "utf8")).args as string[];
     expect(args[args.indexOf("--resume") + 1], args.join(" ")).toBe(sid);
     step("6. 두 번째 앱 종료");
-    await second.close();
+    await quitApp(second);
   } finally {
     if (pid && alive(pid)) process.kill(pid, "SIGKILL");
     rmSync(dir, { recursive: true, force: true });

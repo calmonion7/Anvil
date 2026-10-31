@@ -83,6 +83,7 @@ function createWindow() {
 
 /** 서버에 붙어 창을 연다(이미 열려 있으면 새 토큰 주소로 다시 연다). */
 async function openOnce() {
+  await app.whenReady(); // activate가 ready보다 먼저 와도 창은 준비 뒤에 만든다(그 전엔 BrowserWindow를 만들 수 없다 — CI 실측)
   const s = await ensureServer();
   const base = devUrl ?? `http://127.0.0.1:${s.port}`;
   origin = new URL(base).origin;

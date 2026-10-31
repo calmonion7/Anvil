@@ -26,10 +26,9 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      # Windows는 테스트가 다 끝난 뒤에도 node-pty ConPTY(세션 종료 때 AttachConsole failed)가 테스트 하위 프로세스를 붙잡아 끝나지 않는다(CI 실측).
-      # 하위 프로세스 없이 같은 프로세스에서 돌려 끝나면 강제 종료한다 — 이 방식은 디렉터리 인자를 받지 않아 진입 파일을 준다.
+      # Windows에서 테스트가 끝나도 프로세스가 남는 문제는 server/index.js가 처리한다(같은 프로세스 실행은 파일 사이 상태가 섞여 쓰지 않는다)
       - name: 서버 테스트
-        run: node --test --test-isolation=none --test-force-exit server/index.js
+        run: node --test server/
 
       - name: Electron 스모크(Linux — 가상 화면)
         if: runner.os == 'Linux'
