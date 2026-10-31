@@ -1,5 +1,5 @@
 # 데스크톱 앱(Electron)을 세 OS에서 실제로 띄워 본다 — 서버 테스트 + Playwright `_electron` 스모크(세션·pty·앱 종료 뒤 서버 생존·복구).
-# 재시도는 끄고 첫 시도 결과만 본다(회고 task 17). Windows·Linux 설치 파일은 VM 손 확인용 산출물로 올린다.
+# 재시도는 끄고 첫 시도 결과만 본다(회고 task 17). Windows·Linux 설치 파일은 VM 손 확인용 산출물로 올리고, 세 OS 모두 자체 업데이터의 교체 단계를 진짜 설치 파일로 확인한다.
 name: electron
 
 on:
@@ -38,13 +38,17 @@ jobs:
         if: runner.os != 'Linux'
         run: npm run test:app
 
-      - name: 설치 파일(Windows)
-        if: runner.os == 'Windows'
-        run: npx electron-builder --win
+      # 자체 업데이터의 교체 단계를 진짜 설치 파일로 본다 — 같은 앱을 지금 버전과 9.9.9로 만들어 옛것을 설치하고 새것으로 바꾼다(5/6 DoD 2)
+      - name: 설치 파일(지금 버전)
+        shell: bash
+        run: npx electron-builder ${{ runner.os == 'macOS' && '--mac zip --arm64' || runner.os == 'Windows' && '--win' || '--linux' }} --publish never
 
-      - name: 설치 파일(Linux)
-        if: runner.os == 'Linux'
-        run: npx electron-builder --linux
+      - name: 설치 파일(새 버전 9.9.9)
+        shell: bash
+        run: npx electron-builder ${{ runner.os == 'macOS' && '--mac zip --arm64' || runner.os == 'Windows' && '--win' || '--linux' }} --publish never -c.extraMetadata.version=9.9.9 -c.directories.output=dist-new
+
+      - name: 교체 단계(옛 설치본 → 9.9.9)
+        run: node scripts/check-replace.mjs dist dist-new 9.9.9
 
       - uses: actions/upload-artifact@v4
         if: runner.os != 'macOS'

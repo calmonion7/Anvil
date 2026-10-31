@@ -142,6 +142,25 @@
       settingsError = String(e);
     }
   }
+  // Anvil 자체 업데이트(서버 updater.js) — 설치본에서 새 버전이 있으면 띠에 [업데이트]. 진행은 `updater` 이벤트.
+  type Updater = {
+    current: string;
+    available: { version: string } | null;
+    progress: { state: "downloading" | "deferred" | "installing" | "failed"; version: string; error: string | null } | null;
+    error: string | null;
+    installable?: boolean;
+  };
+  let updater = $state<Updater | null>(null);
+  let updateChecking = $state(false);
+  const installUpdate = () => call("updater_install").catch((e) => updater && (updater.error = String(e)));
+  const checkUpdate = () => {
+    updateChecking = true;
+    call<Updater>("updater_check")
+      .then((u) => (updater = u))
+      .catch(() => {})
+      .finally(() => (updateChecking = false));
+  };
+
   // forge 플러그인: 새 버전 [업데이트] · Anvil이 확인한 것보다 새 버전이면 경고
   type ForgePlugin = { installed: string | null; latest: string | null; update_available: boolean; untested: boolean };
   let forgePlugin = $state<ForgePlugin | null>(null);
@@ -321,10 +340,15 @@
     });
     checkDeps();
     checkForgePlugin();
+    call<Updater | null>("updater_status")
+      .then((u) => (updater = u))
+      .catch(() => {});
+    const unUpdater = on<Updater>("updater", (u) => (updater = { ...updater, ...u }));
     return () => {
       unSnap();
       unSess();
       unModels();
+      unUpdater();
       unInstall();
       unAuth();
       clearInterval(poll);
@@ -525,6 +549,12 @@
             </select>
           </label>
           <span class="t3">{settingsError || t("새로 여는 세션부터 적용됩니다", "Applies to newly opened sessions")}</span>
+          {#if updater?.installable}
+            <span class="t3">
+              Anvil {updater.current} · {updater.available ? t(`${updater.available.version} 사용 가능`, `${updater.available.version} available`) : updater.error ? t("확인 실패", "Check failed") : t("최신", "Up to date")}
+            </span>
+            <button class="btn sm" disabled={updateChecking} onclick={checkUpdate}>{updateChecking ? t("확인 중…", "Checking…") : t("다시 확인", "Check again")}</button>
+          {/if}
         </div>
       {/if}
     {/if}
@@ -572,6 +602,27 @@
           <button class="btn sm" onclick={() => openDoc(err.path, err.path.split("/").pop() ?? err.path)}>{t("파일 열기", "Open file")}</button>
         </div>
       {/each}
+      {#if updater?.installable && updater.available}
+        {@const p = updater.progress}
+        <div class="band">
+          {#if p?.state === "failed"}
+            <span class="b"><span class="crit">✕</span> {t(`Anvil ${p.version} 업데이트 실패`, `Anvil ${p.version} update failed`)}</span>
+            <span class="ink2">{p.error}</span>
+            <span class="sp"></span>
+            <button class="btn sm" onclick={installUpdate}>{t("다시 시도", "Try again")}</button>
+          {:else if p?.state === "deferred"}
+            <span class="b">{t("세션이 끝나면 업데이트", "Updating when sessions finish")}</span>
+            <span class="ink2">{t(`작업 중인 세션이 끝나면 Anvil ${p.version}으로 바꿉니다 — 세션은 다시 열린 뒤 이어집니다`, `Switches to Anvil ${p.version} once working sessions finish — sessions resume after the restart`)}</span>
+          {:else if p?.state === "installing"}
+            <span class="b">{t(`Anvil ${p.version}으로 다시 시작하는 중…`, `Restarting into Anvil ${p.version}…`)}</span>
+          {:else}
+            <span class="b">{t(`Anvil ${updater.available.version} 사용 가능`, `Anvil ${updater.available.version} available`)}</span>
+            <span class="ink2">{t(`지금 ${updater.current} · 앱이 다시 열리고 세션은 대화째 이어집니다`, `Now ${updater.current} · the app reopens and sessions resume`)}</span>
+            <span class="sp"></span>
+            <button class="btn sm" disabled={p?.state === "downloading"} onclick={installUpdate}>{p?.state === "downloading" ? t("내려받는 중…", "Downloading…") : t("업데이트", "Update")}</button>
+          {/if}
+        </div>
+      {/if}
       {#if forgePlugin?.update_available || forgeUpdateMsg}
         <div class="band">
           <span class="b">forge {forgePlugin?.latest ?? ""} {t("사용 가능", "available")}</span>

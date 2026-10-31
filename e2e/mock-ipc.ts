@@ -43,6 +43,8 @@ export type Ipc = {
   install: unknown;
   /** pick_folder 응답 — 기본 null(취소) */
   pick: unknown;
+  /** updater_status 응답 — 기본 null(띠 없음) */
+  updater: unknown;
   /** 서버 이벤트를 화면에 보낸다 */
   emit(event: string, payload: unknown): Promise<void>;
   /** 서버→화면 웹소켓 메시지 하나(웹소켓이 붙을 때까지 기다린다) */
@@ -70,6 +72,7 @@ export async function mockIpc(page: Page): Promise<Ipc> {
     deps: null,
     install: null,
     pick: null,
+    updater: null,
     pending: [],
     doc: null,
     connects: 0,
@@ -101,6 +104,7 @@ export async function mockIpc(page: Page): Promise<Ipc> {
       case "session_fill": return `${args.project}-${args.role}`;
       case "read_doc": return ipc.doc ?? `# 문서 ${args.rel}`;
       case "pick_folder": return ipc.pick;
+      case "updater_status": return ipc.updater;
       case "deps_status":
         if (held) return new Promise((r) => ipc.pending.push(r));
         return ipc.deps;

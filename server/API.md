@@ -44,9 +44,12 @@
 | `forge_plugin_status` | – | `{installed, latest, update_available, untested}` | deps.js |
 | `forge_plugin_update` | – | `null` | deps.js |
 | `set_lang` | `{en}` | `null` | i18n.js |
-| `pick_folder` (새) | – | 절대 경로 `string` · 취소 `null` · macOS 아님 `{unsupported:true}`(화면이 경로 입력으로) | pick.js |
+| `pick_folder` (새) | – | 절대 경로 `string` · 취소 `null` · macOS 아님 `{unsupported:true}`(화면이 경로 입력으로). 데스크톱 앱은 이 명령 대신 preload `anvilDesktop.pickFolder()`(OS 기본 폴더 창) | pick.js |
+| `updater_status` | – | `{current, available:{version,name,url,sumsUrl}\|null, progress, error, installable}` — 설치본이 아니면 `installable:false` | updater.js |
+| `updater_check` | – | 위와 같은 모양(GitHub 최신 릴리스를 지금 다시 확인) | updater.js |
+| `updater_install` | – | 지금 상태(설치는 뒤에서 계속 — `updater` 이벤트). 끝나면 OS별 교체 단계(replace.js)를 띄우고 서버가 내려간다 | updater.js |
 
-없앤 명령: `deps_login`·`updater_check`·`updater_install`·`notify`. `deps_install`은 3/6에서 버튼 없는 첫 실행 자동 설치로 다시 생겼다.
+없앤 명령: `deps_login`·`notify`. `deps_install`은 3/6에서 버튼 없는 첫 실행 자동 설치로, `updater_*`는 5/6에서 세 OS 공통 자체 업데이터로 다시 생겼다.
 
 ## 웹소켓: `GET /ws`
 
@@ -54,7 +57,7 @@
 
 | 방향 | 메시지 | 뜻 |
 |---|---|---|
-| 서버→화면 | `{type:'event', name, payload}` | Tauri `emit`. `name`: `snapshot`(Snapshot 하나) · `sessions` · `models` · `deps_progress`(자동 설치 진행 — `state`: `pending`·`running`·`ok`·`failed`·`skipped`) |
+| 서버→화면 | `{type:'event', name, payload}` | Tauri `emit`. `name`: `snapshot`(Snapshot 하나) · `sessions` · `models` · `deps_progress`(자동 설치 진행 — `state`: `pending`·`running`·`ok`·`failed`·`skipped`) · `updater`(자체 업데이트 상태 — `progress.state`: `downloading`·`deferred`·`installing`·`failed`) |
 | 화면→서버 | `{type:'term_open', id, name, cols, rows}` | 세션 `name`에 터미널 `id`를 붙인다 |
 | 화면→서버 | `{type:'term_write', id, data}` | 입력 |
 | 화면→서버 | `{type:'term_resize', id, cols, rows}` | 크기 |

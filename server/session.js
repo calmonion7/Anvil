@@ -112,7 +112,7 @@ function readRecords(dir) {
 }
 
 /** 훅이 남긴 상태 파일 + 서버의 pty 생존 여부. pty가 없으면 파일과 상관없이 종료다. */
-function states(dir) {
+export function states(dir) {
   const map = {};
   for (const [name, v] of readRecords(join(dir, 'sessions'))) {
     const alive = live.has(name);

@@ -11,8 +11,9 @@ import * as i18n from './i18n.js';
 import { writeInfo } from './instance.js';
 import * as pick from './pick.js';
 import * as session from './session.js';
+import * as updater from './updater.js';
 
-const MODULES = [forge, session, deps, i18n, pick];
+const MODULES = [forge, session, deps, i18n, pick, updater];
 /** 터미널은 그 웹소켓 연결에 묶이므로 웹소켓 메시지로만 받는다. */
 const TERM = new Set(['term_open', 'term_write', 'term_resize', 'term_close']);
 const STATIC = resolve(import.meta.dirname, '../build');
