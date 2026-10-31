@@ -51,3 +51,11 @@
 - claude가 작업하는 도중(세션 상태 「작업 중」)에 서버가 꺼진 뒤 복구하면, 끊긴 응답이 화면에서 티 나는지 확인하지 못했다. 티 나지 않으면 「복구됨 — 끊긴 작업이 있었습니다」 같은 표시를 작은 작업으로 넣을지 정할 것.
   Evidence: 2/6 계획 '하지 않을 것'(UAT 뒤 판단으로 미룸). 에이전트 UAT는 입력 대기 상태에서만 끊었다(`.forge/verify/electron-app-2of6/261031-011305/result.txt`).
   2026-10-31: 실제 재부팅 뒤 세션 복구는 사람이 확인함 — 남은 것은 작업 중에 끊긴 경우뿐. 재부팅 때 claude가 서버보다 먼저 끝나면 목록에서 빠지던 틈은 봉인 뒤 바로 고쳤다(`server/session.js` onExit: 신호·종료 코드 128 이상이면 목록에 남김, `server/test/restore.test.js`).
+
+<!-- followup: fu-2c6e81f04a9d | source: electron-app-3of6 | task: 24 | date: 2026-10-31 | status: open | taken: - -->
+- 화면 전체가 좁은 폭(360px)에서 가로로 넘친다(보드만 있을 때도 문서 폭 987px, 본문 752px). 데스크톱 앱 창 최소 크기를 정할지, 사이드바를 접는 좁은 배치를 만들지 정할 것.
+  Evidence: 2026-10-31 Playwright 360×720 측정(`section.main` 752px, `aside` 208px).
+
+<!-- followup: fu-c3a3fcbe8a0d | source: electron-app-3of6 | task: 24 | date: 2026-10-31 | status: open | taken: - -->
+- UAT 뒤에 고친 "개발자 도구 설치 창 앞으로 가져오기·[설치] 안내"를 실제 화면으로 확인하지 못했다. 다음 VM UAT(4/6 또는 5/6 릴리스 확인) 때 깨끗한 macOS 복제본에서 설치 창이 앞에 뜨는지와 「준비 중」에 안내가 보이는지 함께 볼 것.
+  Evidence: VM `anvil-3of6`에는 수정 전 빌드가 들어 있었다(run.md 「UAT에서 나온 것」). 수정은 `server/test/deps.test.js`로만 확인.
