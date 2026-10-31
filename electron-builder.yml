@@ -1,0 +1,25 @@
+# 데스크톱 앱 설치 파일(electron-builder) — `npm run dist:mac` → dist/. 서명 없음(ADR 261030-005852).
+# 창은 build/(vite 산출물)을 서버가 내고, 서버(server/)는 앱 안 Electron을 node로 부른다.
+appId: com.taebro.anvil
+productName: Anvil
+directories:
+  output: dist
+files:
+  - package.json
+  - electron/**
+  - server/**
+  - "!server/test/**"
+  - build/**
+# node-pty는 N-API prebuild가 Electron에서도 그대로 돈다(실측 2026-10-30) — 다시 빌드하지 않는다.
+npmRebuild: false
+# 네이티브 모듈(.node·spawn-helper)은 asar 안에서 실행할 수 없다.
+asarUnpack:
+  - node_modules/node-pty/**
+mac:
+  icon: src-tauri/icons/icon.icns
+  identity: null
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip # 5/6 자체 업데이터가 쓴다
+      arch: arm64

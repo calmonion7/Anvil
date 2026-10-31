@@ -1,6 +1,6 @@
 // 서버 코어: 127.0.0.1에만 열고, 토큰·Origin·Host를 검사한 뒤 API(POST /api/<명령>)·웹소켓(/ws)·정적 화면(build/)을 낸다.
 // 명령은 각 모듈의 `commands`를 그대로 모아 등록한다. 계약은 server/API.md.
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { STATUS_CODES, createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
@@ -8,6 +8,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import * as deps from './deps.js';
 import * as forge from './forge.js';
 import * as i18n from './i18n.js';
+import { writeInfo } from './instance.js';
 import * as pick from './pick.js';
 import * as session from './session.js';
 
@@ -43,8 +44,8 @@ function readBody(req) {
   });
 }
 
-/** 화면의 meta CSP(svelte.config.js — 스크립트)가 못 다는 것: 다른 사이트의 프레임에 실리지 않게(클릭재킹), 문서 HTML이 플러그인·<base>·폼 전송을 못 쓰게 */
-const CSP = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+/** 화면의 meta CSP(svelte.config.js — 스크립트)가 못 다는 것: 다른 사이트의 프레임에 실리지 않게(클릭재킹), 문서 HTML이 플러그인·<base>·폼 전송·프레임을 못 쓰게 */
+const CSP = "frame-ancestors 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 function serveStatic(req, res, pathname) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method not allowed' });
@@ -66,13 +67,14 @@ function serveStatic(req, res, pathname) {
   res.end(req.method === 'HEAD' ? undefined : readFileSync(file));
 }
 
-/** 서버를 띄운다. 실행마다 새 토큰을 `<dataDir>/token`(600)에 쓴다. → { url(토큰 붙은 첫 주소), token, server } */
-export async function start({ port, dataDir }) {
+/**
+ * 서버를 띄운다. 포트를 잡은 뒤에 실행마다 새 토큰을 `<dataDir>/token`(600)에, 포트·pid를 `server.json`에 쓴다
+ * (포트를 못 잡은 두 번째 서버가 살아 있는 서버의 토큰을 덮지 않게). `idleMs`가 0보다 크면 살아 있는 세션도 붙은 웹소켓도
+ * 없는 상태가 그만큼 이어질 때 `onIdle`을 한 번 부른다. → { url(토큰 붙은 첫 주소), token, server }
+ */
+export async function start({ port, dataDir, idleMs = 0, onIdle }) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const token = randomBytes(32).toString('hex');
-  const tokenFile = join(dataDir, 'token');
-  writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
-  chmodSync(tokenFile, 0o600); // 이미 있던 파일은 mode 옵션이 먹지 않는다
 
   // 같은 호스트의 다른 포트(다른 Anvil)와 쿠키가 섞이지 않게 이름에 포트를 넣는다.
   const cookieName = `anvil_${port}`;
@@ -143,6 +145,12 @@ export async function start({ port, dataDir }) {
     const code = reject(req, isApi);
     if (code) return json(res, code, { error: STATUS_CODES[code] });
     if (isApi) return api(req, res, url.pathname.slice('/api/'.length));
+    // 이 서버가 그 토큰의 주인인지 — 앱이 토큰을 보내기 전에 묻는다(instance.js running). 토큰 없이 HMAC만 돌려준다.
+    if (url.pathname === '/instance') {
+      const nonce = url.searchParams.get('nonce') ?? '';
+      if (!/^[0-9a-f]{32}$/.test(nonce)) return json(res, 400, { error: 'bad nonce' });
+      return json(res, 200, { proof: createHmac('sha256', token).update(nonce).digest('hex') });
+    }
     if (url.pathname === '/' && url.searchParams.has('token')) {
       if (!same(url.searchParams.get('token'))) return json(res, 401, { error: STATUS_CODES[401] });
       res.writeHead(302, { location: '/', 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` });
@@ -184,5 +192,22 @@ export async function start({ port, dataDir }) {
     server.once('error', fail);
     server.listen(port, '127.0.0.1', ok);
   });
+  const tokenFile = join(dataDir, 'token');
+  writeFileSync(tokenFile, `${token}\n`, { mode: 0o600 });
+  chmodSync(tokenFile, 0o600); // 이미 있던 파일은 mode 옵션이 먹지 않는다
+  writeInfo(dataDir, port);
+  // 포트를 잡은 뒤에만(두 번째 서버가 세션을 띄우지 않게): 세션 복구 등
+  for (const m of MODULES) await m.ready?.(ctx);
+
+  if (idleMs > 0) {
+    let since = Date.now();
+    const timer = setInterval(() => {
+      if (clients.size || session.liveCount()) since = Date.now();
+      else if (Date.now() - since >= idleMs) {
+        clearInterval(timer);
+        onIdle?.();
+      }
+    }, Math.min(idleMs, 5000));
+  }
   return { url: `http://127.0.0.1:${port}/?token=${token}`, token, server };
 }

@@ -66,6 +66,8 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 npm ci
 npm run tauri dev      # 개발 실행
 npm run dev:web        # 웹 개발 실행: Node 서버 + vite 화면(찍히는 「Anvil 개발:」 주소 http://127.0.0.1:1420/?token=… 을 연다)
+npm run dev:app        # 데스크톱 앱 개발 실행: vite 화면 + Electron 창(서버는 설치된 앱처럼 따로 떠 창을 닫아도 남는다)
+npm run test:app       # Electron 앱 스모크(먼저 npm run build) · npm run dist:mac → dist/에 mac arm64 .dmg
 npm run check          # 타입 검사
 cd src-tauri && cargo test
 scripts/install-app.sh # 이 맥에 빌드해 설치(main을 따라가는 로컬 설치본)

@@ -2,9 +2,10 @@
 // 세션 상태는 서버가 아니라 claude 훅(hooks/anvil-hook.js)이 데이터 폴더 `sessions/<세션 이름>.json`에 남기고,
 // 실제 모델·effort는 상태줄 래퍼(hooks/anvil-statusline.js)가 `models/<세션 이름>.json`에 남긴다.
 // 화면 연결이 끊겨도 pty는 남고, 다시 붙는 화면에 최근 출력을 재생한다. node-pty는 `./pty.js`로 불러온다.
-import { mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from 'node:fs';
+// 열린 세션은 `restore.json`에 남겨, 서버가 내려간 뒤(재부팅·종료 신호) 다음 서버가 `claude --resume`으로 다시 띄운다.
+import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, watch, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { claudeHome, runPath } from './env.js';
+import { claudeHome, runPath, setupNode } from './env.js';
 import { tr } from './i18n.js';
 import pty from './pty.js';
 import { collect } from './slash.js';
@@ -22,6 +23,8 @@ const READY_TIMEOUT = 40_000;
  * 세션으로 보고 이름(-n)을 부모 세션 이름으로 덮거나 effort를 따라간다(2026-10-18 실측). CLAUDE_CONFIG_DIR 등 사용자 설정은 남긴다.
  */
 const PARENT_CLAUDE = /^(CLAUDECODE|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_PID|CLAUDE_JOB_DIR|CLAUDE_EFFORT)$/;
+/** 서버가 Electron 안의 Node로 돌려고 받은 변수 — 세션에 넘기면 그 안에서 여는 Electron 앱(VS Code 등)이 node로 뜬다. */
+const SERVER_ONLY = /^ELECTRON_RUN_AS_NODE$/;
 
 /** 살아 있는 세션: 이름 → { name, pty, chunks(최근 출력), size, views: Set<{conn, id}> } */
 const live = new Map();
@@ -67,14 +70,15 @@ const checkRole = (role) => {
 // ---------- 데이터 폴더(훅 설정) ----------
 
 const quote = (s) => (process.platform === 'win32' ? `"${s}"` : `'${s.replaceAll("'", "'\\''")}'`);
-/** claude 훅·상태줄에 등록하는 명령: 이 서버의 node로 hooks/의 스크립트를, 데이터 폴더를 인자로. */
-const scriptCmd = (file, dir) => [process.execPath, join(HOOKS, file), dir].map(quote).join(' ');
+/** claude 훅·상태줄에 등록하는 명령: 이 서버의 node(Electron이면 대체 실행 파일)로 hooks/의 스크립트를, 데이터 폴더를 인자로. */
+const scriptCmd = (node, file, dir) => [node, join(HOOKS, file), dir].map(quote).join(' ');
 
-/** 서버가 시작할 때마다 훅 설정을 다시 쓴다(서버 위치·업데이트 반영). */
+/** 서버가 시작할 때마다 훅 설정과 node 대체 실행 파일을 다시 쓴다(서버 위치·업데이트 반영). */
 function install(dir) {
   mkdirSync(join(dir, 'sessions'), { recursive: true });
   mkdirSync(join(dir, 'models'), { recursive: true });
-  const hook = scriptCmd('anvil-hook.js', dir);
+  const node = setupNode(dir);
+  const hook = scriptCmd(node, 'anvil-hook.js', dir);
   const cmd = (state) => [{ hooks: [{ type: 'command', command: `${hook} ${state}` }] }];
   const settings = {
     hooks: {
@@ -85,7 +89,7 @@ function install(dir) {
       Notification: cmd('waiting'),
       SessionEnd: cmd('ended'),
     },
-    statusLine: { type: 'command', command: scriptCmd('anvil-statusline.js', dir) },
+    statusLine: { type: 'command', command: scriptCmd(node, 'anvil-statusline.js', dir) },
   };
   writeFileSync(join(dir, 'hooks.json'), JSON.stringify(settings, null, 2));
 }
@@ -133,6 +137,7 @@ function models(dir) {
 }
 
 function changed(ctx) {
+  syncIds(ctx.dataDir);
   ctx.broadcast('sessions', states(ctx.dataDir));
   ctx.broadcast('models', models(ctx.dataDir));
 }
@@ -149,19 +154,85 @@ export async function init(ctx) {
   for (const d of ['sessions', 'models']) watch(join(ctx.dataDir, d), onChange).unref();
 }
 
+// ---------- 복구 목록 ----------
+// 서버가 내려가며(재부팅·종료 신호·업데이트 재시작) 끝난 세션을 다음 서버가 다시 띄우도록 열린 세션을 `<dataDir>/restore.json`에 남긴다.
+// 사람이 끝낸 세션([세션 종료]·서버가 살아 있는 동안 claude가 스스로 끝남)만 뺀다. 서버는 종료 신호를 받아도 세션을 정리하지 않는다 —
+// 정리하며 pty가 끝나면 모두 "스스로 끝남"으로 빠져 목록이 빈다(server/test/restore.test.js가 SIGTERM·SIGKILL로 지킨다).
+
+/** 이름 → { name, project, role, sessionId(claude 대화 ID, 훅이 알리기 전엔 null) } */
+const restoring = new Map();
+
+function readRestore(dir) {
+  try {
+    const v = JSON.parse(readFileSync(join(dir, 'restore.json'), 'utf8'));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 임시 파일 → rename으로 바꾼다(쓰다 죽어도 반쪽 파일이 남지 않게). 600 — 프로젝트 경로가 들어 있다. */
+function saveRestore(dir) {
+  const f = join(dir, 'restore.json');
+  writeFileSync(`${f}.tmp`, JSON.stringify([...restoring.values()], null, 2), { mode: 0o600 });
+  chmodSync(`${f}.tmp`, 0o600);
+  renameSync(`${f}.tmp`, f);
+}
+
+function forget(dir, name) {
+  if (restoring.delete(name)) saveRestore(dir);
+}
+
+/** 훅이 알린 대화 ID를 목록에 옮긴다(/clear 뒤의 새 ID 포함). */
+function syncIds(dir) {
+  const st = states(dir);
+  let dirty = false;
+  for (const e of restoring.values()) {
+    const sid = st[e.name]?.sessionId;
+    if (sid && sid !== e.sessionId && live.has(e.name)) {
+      e.sessionId = sid;
+      dirty = true;
+    }
+  }
+  if (dirty) saveRestore(dir);
+}
+
+/**
+ * 서버가 포트를 잡은 뒤(http.js) 부른다: 목록의 세션을 같은 이름·작업 폴더로 다시 띄운다. 등록을 해제한 프로젝트의 항목은 뺀다.
+ * 대화 ID는 훅이 직접 쓴 상태 파일(`sessions/<이름>.json`)을 먼저 본다 — 목록에는 파일 감시를 거쳐 늦게 옮겨지므로, 훅이 알린 직후
+ * (/clear 직후 포함) 서버가 죽으면 목록의 ID는 비었거나 옛것이다(restore-probe가 잡았다). 상태 파일은 세션을 띄울 때 지우므로 그 실행의 것이다.
+ */
+export async function ready(ctx) {
+  const hooked = states(ctx.dataDir);
+  // claude 인자로 넘기므로 옵션처럼 생긴 값(`--…`)은 대화 ID로 보지 않는다.
+  const id = (v) => (typeof v === 'string' && /^[A-Za-z0-9][\w-]*$/.test(v) ? v : null);
+  for (const e of readRestore(ctx.dataDir)) {
+    const { project, role, sessionId } = e ?? {};
+    if (typeof project !== 'string' || !ROLES.includes(role) || !ctx.registered(project)) continue;
+    const sid = id(hooked[sessionName(project, role)]?.sessionId) ?? id(sessionId);
+    try {
+      start(ctx, project, role, sid);
+    } catch (err) {
+      console.error(`세션 복구 실패(${project} ${role}): ${err.message}`);
+    }
+  }
+  saveRestore(ctx.dataDir); // 띄우지 못한 항목을 뺀다
+}
+
 // ---------- 세션(pty) ----------
 
 /** GUI·launchd에서 뜬 서버에는 LANG이 없을 수 있어 한글이 깨진다. UTF-8이 아니면 UTF-8 로캘을 준다. */
 const lang = () => (process.env.LANG?.includes('UTF-8') ? process.env.LANG : 'en_US.UTF-8');
 
 function sessionEnv(name, title) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !PARENT_CLAUDE.test(k)));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !PARENT_CLAUDE.test(k) && !SERVER_ONLY.test(k)));
   // 전역 훅 cc-session-name.sh(SessionStart clear)가 /clear 뒤에 CC_SESSION_NAME을 다시 붙인다.
   return { ...env, ANVIL_SESSION: name, PATH: runPath(), LANG: lang(), TERM: 'xterm-256color', CC_SESSION_NAME: title };
 }
 
-function claudeArgs(title, model, hooks) {
-  return ['-n', title, ...(model === 'default' ? [] : ['--model', model]), '--settings', hooks];
+/** `resume`: 이어 열 claude 대화 ID(복구) — 없으면 새 대화 */
+function claudeArgs(title, model, hooks, resume) {
+  return ['-n', title, ...(model === 'default' ? [] : ['--model', model]), '--settings', hooks, ...(resume ? ['--resume', resume] : [])];
 }
 
 /** 최근 출력을 REPLAY_MAX 글자까지만 남긴다. */
@@ -184,7 +255,7 @@ function check(ctx, project, role) {
   checkRole(role);
 }
 
-function start(ctx, project, role) {
+function start(ctx, project, role, resume = null) {
   const dir = ctx.dataDir;
   const name = sessionName(project, role);
   if (live.has(name)) return name;
@@ -194,7 +265,7 @@ function start(ctx, project, role) {
   // ANVIL_CLAUDE: claude 자리에 다른 실행 파일(테스트의 가짜 claude)
   let p;
   try {
-    p = pty.spawn(process.env.ANVIL_CLAUDE || 'claude', claudeArgs(title, roleModel(dir, role), join(dir, 'hooks.json')), {
+    p = pty.spawn(process.env.ANVIL_CLAUDE || 'claude', claudeArgs(title, roleModel(dir, role), join(dir, 'hooks.json'), resume), {
       name: 'xterm-256color',
       cols: 200,
       rows: 50,
@@ -206,12 +277,19 @@ function start(ctx, project, role) {
   }
   const s = { name, pty: p, chunks: [], size: 0, views: new Set() };
   live.set(name, s);
+  restoring.set(name, { name, project, role, sessionId: resume });
+  saveRestore(dir);
   p.onData((data) => {
     record(s, data);
     for (const v of s.views) v.conn.send({ type: 'term', id: v.id, data });
   });
-  p.onExit(() => {
-    if (live.get(name) === s) live.delete(name);
+  p.onExit(({ exitCode, signal }) => {
+    // 서버가 살아 있는 동안 claude가 스스로 끝났다(/exit → 0) — 사람이 끝낸 것이라 복구하지 않는다. 신호로 죽었으면(재부팅 때 macOS가
+    // 서버보다 먼저 claude를 끝낼 수 있다. 실제 claude는 SIGTERM에 143·SIGHUP에 129로 끝난다, 2026-10-31 실측) 목록에 남긴다.
+    if (live.get(name) === s) {
+      live.delete(name);
+      if (!signal && exitCode < 128) forget(dir, name);
+    }
     changed(ctx);
   });
   changed(ctx);
@@ -219,6 +297,9 @@ function start(ctx, project, role) {
 }
 
 const alive = (s) => live.get(s.name) === s;
+
+/** 살아 있는 세션 수 — 서버 유휴 종료(http.js)가 본다. */
+export const liveCount = () => live.size;
 
 /** 새로 띄운 세션이 SessionStart 훅으로 입력 대기를 알릴 때까지 기다린다. */
 async function waitReady(dir, name) {
@@ -280,6 +361,7 @@ export const commands = {
     const s = live.get(name);
     if (!s) throw new Error(tr('세션이 없습니다', 'No such session'));
     live.delete(name);
+    forget(ctx.dataDir, name);
     s.pty.kill();
     changed(ctx);
     return null;

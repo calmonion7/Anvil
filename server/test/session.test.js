@@ -21,7 +21,12 @@ const ctx = {
 };
 
 const fake = join(root, 'claude');
-writeFileSync(fake, `#!/bin/sh\nexec '${process.execPath}' '${join(import.meta.dirname, 'fake-claude.js')}' "$@"\n`);
+// Electron 런타임에서 돌 때(electron.test.js) process.execPath는 Electron이다 — 세션 환경에는 ELECTRON_RUN_AS_NODE가 없으므로
+// 래퍼가 직접 붙이고, 받은 값은 FAKE_RUN_AS_NODE로 남긴다.
+writeFileSync(
+  fake,
+  `#!/bin/sh\nFAKE_RUN_AS_NODE="\${ELECTRON_RUN_AS_NODE-unset}" ELECTRON_RUN_AS_NODE=1 exec '${process.execPath}' '${join(import.meta.dirname, 'fake-claude.js')}' "$@"\n`,
+);
 chmodSync(fake, 0o755);
 process.env.ANVIL_CLAUDE = fake;
 
@@ -99,6 +104,13 @@ test('브라우저 연결이 끊겨도 pty는 남고, 다시 붙으면 끊긴 �
   const p = project('replay');
   const name = await c.session_start({ project: p, role: 'run' }, ctx);
   await waitFor(async () => (await stateOf(name))?.state === 'waiting');
+  // 가짜 claude는 SessionStart 훅을 부른 뒤에 `ready>`를 찍는다 — 그 출력이 재생 버퍼에 들 때까지 기다린다(10번 중 4번 경쟁으로 실패했다).
+  await waitFor(async () => {
+    const t = fakeConn();
+    await c.term_open({ id: 9, name, cols: 80, rows: 24 }, { ...ctx, conn: t });
+    t.close();
+    return t.text(9).includes('ready>');
+  });
 
   const a = fakeConn();
   await c.term_open({ id: 7, name, cols: 80, rows: 24 }, { ...ctx, conn: a });
@@ -182,7 +194,7 @@ test('세션 종료: anvil- 세션만, 끝내면 바로 종료 상태', { skip }
 test('claude는 로그인 PATH·UTF-8 LANG·세션 이름 환경으로, 부모 claude 변수 없이, 역할 모델·훅 설정을 실어 뜬다', { skip }, async () => {
   const out = join(root, 'fake-out.json');
   const saved = { ...process.env };
-  Object.assign(process.env, { FAKE_OUT: out, CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 'parent', CLAUDE_EFFORT: 'low', CLAUDE_PID: '1', CLAUDE_CONFIG_DIR: '/keep', LANG: 'C' });
+  Object.assign(process.env, { FAKE_OUT: out, CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 'parent', CLAUDE_EFFORT: 'low', CLAUDE_PID: '1', CLAUDE_CONFIG_DIR: '/keep', LANG: 'C', ELECTRON_RUN_AS_NODE: '1' });
   const p = project('env');
   let name;
   try {
@@ -205,6 +217,7 @@ test('claude는 로그인 PATH·UTF-8 LANG·세션 이름 환경으로, 부모 c
   assert.equal(got.env.CC_SESSION_NAME, '[Anvil] [env] RUN');
   assert.equal(got.env.CLAUDE_CONFIG_DIR, '/keep', '사용자 설정은 남긴다');
   for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_EFFORT', 'CLAUDE_PID']) assert.ok(!(k in got.env), `${k} 남음`);
+  assert.equal(got.env.FAKE_RUN_AS_NODE, 'unset', '세션 안에서 여는 다른 Electron 앱이 node로 뜨지 않게 ELECTRON_RUN_AS_NODE는 넘기지 않는다');
   await c.set_model_setting({ role: 'run', model: 'sonnet' }, ctx);
 });
 

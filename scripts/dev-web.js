@@ -9,7 +9,8 @@ import { stripVTControlCharacters } from 'node:util';
 const root = join(import.meta.dirname, '..');
 const stdio = ['inherit', 'pipe', 'inherit'];
 const children = [
-  spawn(process.execPath, [join(root, 'server/main.js')], { cwd: root, stdio }),
+  // 개발 실행은 이 터미널이 수명을 쥐므로 서버 유휴 종료(5분)를 끈다.
+  spawn(process.execPath, [join(root, 'server/main.js')], { cwd: root, stdio, env: { ANVIL_IDLE_MS: '0', ...process.env } }),
   spawn(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), 'dev', ...process.argv.slice(2)], { cwd: root, stdio }),
 ];
 

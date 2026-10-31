@@ -2,6 +2,8 @@
 
 `node server/main.js` — `127.0.0.1`에만 연다. 포트는 고정 `4517`, 환경변수 `ANVIL_PORT`로만 바꾼다. 시작하면 토큰이 붙은 첫 주소(`http://127.0.0.1:<port>/?token=<t>`)를 stdout에 찍는다.
 
+같은 데이터 폴더에 살아 있는 서버가 있으면(`instance.js` `running()`) 새로 뜨지 않고 `Anvil: 이미 실행 중 <첫 주소>`를 찍고 0으로 끝난다. 살아 있는 세션도 붙은 웹소켓도 없는 상태가 `ANVIL_IDLE_MS`(기본 5분, `0`이면 끔) 이어지면 `server.json`을 지우고 0으로 끝난다. 데스크톱 앱(`electron/main.js`)은 Electron을 `ELECTRON_RUN_AS_NODE=1`로 이 파일에 부른다.
+
 ## 보안
 
 | 검사 | 대상 | 거절 |
@@ -12,6 +14,7 @@
 
 - 토큰은 실행마다 새로 만들어 `<data>/token`(600)에 쓴다.
 - `GET /?token=<t>`: 맞으면 `HttpOnly; SameSite=Strict; Path=/` 쿠키를 주고 `/`로 302, 틀리면 401.
+- `GET /instance?nonce=<32자 hex>`: 토큰 없이 `{ proof: HMAC-SHA256(token, nonce) hex }`. 앱이 토큰을 보내기 전에 그 포트의 서버가 토큰의 주인인지 확인한다(낡은 `server.json`의 포트를 다른 사용자의 프로세스가 잡고 있을 때 가짜 화면에 붙지 않게).
 
 ## 명령: `POST /api/<명령>`
 
@@ -63,6 +66,7 @@
 
 - 모듈은 `export const commands = { <명령>: async (args, ctx) => 결과 }`를 내보낸다. 코어(`http.js`)가 모든 모듈의 `commands`를 모아 등록한다(이름이 겹치면 시작 실패). 새 모듈은 `http.js`의 `MODULES`에 한 줄 넣는다.
 - 시작할 때 할 일(감시 시작·훅 설치 등)은 선택적으로 `export async function init(ctx)` — 코어가 listen 전에 부른다.
+- 포트를 잡은 뒤에 할 일(세션 복구 등)은 선택적으로 `export async function ready(ctx)` — 코어가 listen·토큰·`server.json`을 쓴 뒤 부른다. 포트를 못 잡은 두 번째 서버는 여기까지 오지 않는다.
 - 던진 `Error`의 `message`가 화면에 가는 오류 문구다(`tr()`로 한국어/영어).
 - `ctx`:
   - `dataDir` — 데이터 폴더 절대 경로
@@ -77,8 +81,12 @@
 | 파일 | 주인 |
 |---|---|
 | `token` (600) | 코어 |
+| `server.json` (600) — 실행 중 서버 `{port, pid}`, 포트를 잡은 뒤 쓴다 | 코어(instance.js) |
+| `server.log` (600) — 앱이 띄운 서버의 출력 | electron/main.js |
+| `bin/node` — Electron 아래서 돌 때 세션 PATH 맨 앞에 두는 node 대체 실행 파일 | env.js |
 | `projects.json` — 등록한 프로젝트 경로 배열 | forge.js |
 | `settings.json` · `sessions/` · `models/` · 훅·상태줄 스크립트 | session.js |
+| `restore.json` (600) — 열린 세션 `[{name, project, role, sessionId}]`, 다음 서버가 `claude --resume`으로 다시 띄운다. [세션 종료]·claude 스스로 종료(종료 코드 0~127) 때만 빠진다 — 신호로 죽거나 128 이상이면 남는다 | session.js |
 
 Tauri 앱의 데이터 폴더는 쓰지 않는다(새로 시작).
 

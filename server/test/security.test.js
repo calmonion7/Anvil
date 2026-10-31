@@ -146,7 +146,7 @@ test('정적 파일은 토큰 없이도 401이 아니다', async () => {
 
 test('화면은 다른 사이트의 프레임에 실리지 않고 플러그인·<base>·폼 전송을 막는 CSP를 단다(스크립트는 화면의 meta CSP)', async () => {
   const csp = (await send('/')).headers['content-security-policy'] ?? '';
-  for (const d of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"]) assert.match(csp, new RegExp(d), csp);
+  for (const d of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-src 'none'"]) assert.match(csp, new RegExp(d), csp);
 });
 
 test('없는 명령은 404 {error}', async () => {
