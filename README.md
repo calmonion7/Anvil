@@ -1,29 +1,22 @@
 # Anvil
 
-forge(Claude Code 플러그인)로 진행하는 프로젝트들의 진행 상황을 한 화면의 보드로 보고, 단계마다 Claude Code 세션을 띄워 이어 가는 데스크톱 앱(Tauri 2).
+forge(Claude Code 플러그인)로 진행하는 프로젝트들의 진행 상황을 한 화면의 보드로 보고, 단계마다 Claude Code 세션을 띄워 이어 가는 데스크톱 앱(Electron — macOS · Windows · Linux).
 
 - 등록한 프로젝트의 `.forge/` 를 읽어 백로그 · 실행 · 회고 · 완료를 보드로 그린다(읽기만 한다).
-- 계획 · 실행 등 역할별 `claude` 세션을 tmux 안에 띄우고, 앱을 껐다 켜도 세션이 그대로 이어진다.
-- 세션이 입력을 기다리면 알림을 띄운다.
+- 계획 · 실행 등 역할별 `claude` 세션을 띄운다. 세션은 앱과 따로 도는 Anvil 서버가 쥐고 있어 앱을 껐다 켜도 그대로 이어지고, 서버가 다시 떠도(업데이트 등) 대화째 복구된다.
 
 ## 준비물
 
-Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 없으면 앱 맨 위에 안내 띠가 뜨고(프로젝트를 아직 등록하지 않았어도), 그동안 세션을 여는 버튼은 꺼진다. 세 OS 모두 띠의 **[설치]** 한 번으로 빠진 것을 항목별로 설치하고 결과를 항목마다 보여 준다 — 관리자 암호도 Homebrew도 필요 없다(Windows는 WSL 안에 설치한다). 직접 설치했다면 띠의 **[다시 확인]** 을 누른다.
-
-- **macOS**: 개발자 도구(git)가 없으면 [설치]가 macOS 기본 설치 창을 띄우니, 창에서 설치를 마친 뒤 **[다시 확인]** → **[설치]** 를 한 번 더 누른다(forge 플러그인을 받는 데 git이 필요하다). claude CLI를 새로 설치했으면 이어서 뜨는 **[로그인]** 으로 터미널에서 한 번 로그인한다.
-- **Linux**: git이 없으면 `sudo apt install git`을 안내한다 — 관리자 암호가 필요해 직접 설치한다. claude 로그인은 Anvil에서 세션을 열면 claude가 안내한다.
-- **Windows**: WSL은 필요 없다. 처음 열 때 Git for Windows와 claude CLI를 사용자 범위로 자동 설치한다(claude가 Git Bash로 돈다).
-
-tmux 3.6a는 **세 OS 모두 앱에 들어 있어** 따로 설치하지 않는다(시스템에 tmux가 있어도 앱에 든 것을 쓴다). node는 22 이상이어야 하고, 더 낮은 node가 있으면 [설치]가 Anvil 전용 폴더(`~/.local/share/anvil/node`)에 v22를 따로 받아 Anvil 세션에서만 쓴다 — 사용자의 node는 바꾸지 않는다.
+Anvil은 혼자 도는 프로그램이 아니라 아래 도구를 엮어 쓴다. 처음 열 때 빠진 것이 있으면 보드 대신 「준비 중」 화면이 떠 항목별로 사용자 범위에 자동 설치하고 결과를 항목마다 보여 준다 — 관리자 암호도 Homebrew도 필요 없다. 실패하면 **[다시 시도]**.
 
 | 필요 | 용도 | 설치 |
 |---|---|---|
-| **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | [설치]가 `claude.ai/install.sh`로 `~/.local/bin`에 넣는다 |
-| git (macOS는 개발자 도구) | forge 플러그인 받기 | macOS는 [설치]가 설치 창을 띄운다(`xcode-select --install`), Linux·WSL은 `sudo apt install git` |
-| node 22 이상 | forge 훅(세션 시작·종료 등) 실행 | [설치]가 nodejs.org 공식본을 검증해 받는다(관리자 암호 없음) |
-| **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | [설치]가 `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
-| tmux | 세션 유지 | 앱에 내장 |
-| jq | 세션별 모델 표시 · 원래 상태줄 실행 | 앱에 내장 |
+| **Claude Code CLI** (로그인까지) | 각 세션에서 실행 | 자동 — 공식 설치 스크립트(`claude.ai/install.sh`, Windows는 `install.ps1`). 로그인은 첫 세션 안에서 claude가 안내한다 |
+| **forge 플러그인** | 보드가 읽는 `.forge/` 를 만든다 | 자동 — `claude plugin marketplace add gyuha/forge` → `claude plugin install forge@forge` ([소개](https://gyuha.com/forge/)) |
+| git (macOS는 개발자 도구) | forge 플러그인 받기(플러그인이 이미 있으면 확인하지 않는다) | macOS는 기본 설치 창이 뜬다(`xcode-select --install`) — 창에서 설치를 마치면 이어서 진행한다. Linux는 관리자 암호가 필요해 직접 `sudo apt install git` |
+| Git for Windows (Windows만) | claude가 Git Bash로 돈다 | 자동 — `winget`으로 사용자 범위 설치 |
+
+node는 따로 설치하지 않아도 된다 — forge 훅과 상태줄은 앱 안에 든 node로 돈다.
 
 forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
@@ -48,17 +41,17 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 - **처음 쓰는 프로젝트**: forge가 없는 프로젝트는 보드 위 띠의 [계획 세션에서 시작] 으로 `/forge:fg-ask` 를 채워 첫 계획을 만든다.
 - **모델**: 사이드바 아래 [⚙ 설정] 에서 계획 · 실행 세션 모델을 고른다(기본 opus · sonnet). 쓰는 요금제에서 opus를 못 쓰면 "claude 기본값"이나 sonnet으로 바꾼다. 새로 여는 세션부터 적용된다.
 - **사용량**: 세션마다 claude가 돈다 — 쓰는 만큼 Claude 요금제 사용량이 나간다.
-- **앱을 닫아도 세션은 남는다**(다시 열면 이어진다). 세션을 끝내려면 세션 창의 [세션 종료].
+- **앱을 닫아도 세션은 남는다**(다시 열면 이어진다). 세션을 끝내려면 세션 창의 [세션 종료]. 세션도 열린 창도 없으면 서버는 5분 뒤 스스로 내려간다.
 
 ## 문제가 생기면
 
-[GitHub Issues](https://github.com/calmonion7/Anvil/issues) 에 남긴다. 앱 데이터 · 로그는 `~/Library/Application Support/com.taebro.anvil/` 에 있다.
+[GitHub Issues](https://github.com/calmonion7/Anvil/issues) 에 남긴다. 앱 데이터 · 서버 로그(`server.log`)는 세 OS 모두 홈 폴더의 `.anvil/` 에 있다.
 
 ## 삭제
 
-1. 남은 세션 끄기: `tmux -L anvil kill-server`
-2. `/Applications/Anvil.app` 을 휴지통으로
-3. 데이터까지 지우려면: `rm -rf ~/Library/Application\ Support/com.taebro.anvil`
+1. 열린 세션을 모두 [세션 종료]로 끄고 앱을 닫는다(5분 뒤 서버도 내려간다).
+2. 앱 지우기 — macOS: `/Applications/Anvil.app` 을 휴지통으로 · Windows: 설정 → 앱 → Anvil 제거 · Linux: AppImage 파일을 지운다.
+3. 데이터까지 지우려면 홈 폴더의 `.anvil/` 을 지운다(macOS·Linux: `rm -rf ~/.anvil`).
 
 프로젝트의 `.forge/` 는 Anvil이 만들거나 지우지 않는다(forge 플러그인 몫).
 
@@ -66,14 +59,14 @@ forge를 쓰지 않는 프로젝트를 등록하면 보드는 비어 있다.
 
 ```
 npm ci
-npm run tauri dev      # 개발 실행
-npm run dev:web        # 웹 개발 실행: Node 서버 + vite 화면(찍히는 「Anvil 개발:」 주소 http://127.0.0.1:1420/?token=… 을 연다)
 npm run dev:app        # 데스크톱 앱 개발 실행: vite 화면 + Electron 창(서버는 설치된 앱처럼 따로 떠 창을 닫아도 남는다)
-npm run test:app       # Electron 앱 스모크(먼저 npm run build) · npm run dist:mac → dist/에 mac arm64 .dmg
+npm run dev:web        # 웹 개발 실행: Node 서버 + vite 화면(찍히는 「Anvil 개발:」 주소 http://127.0.0.1:1420/?token=… 을 연다)
+node --test server/    # 서버 테스트
+npx playwright test    # 화면 e2e(서버는 가짜)
+npm run test:app       # Electron 앱 스모크(먼저 npm run build) · npm run dist:mac → dist/에 mac .dmg
 npm run check          # 타입 검사
-cd src-tauri && cargo test
 scripts/release.sh X.Y.Z  # 버전 맞추고 커밋 + 태그 (push는 직접). 릴리스 노트 docs/releases/vX.Y.Z.md 를 먼저 커밋
-# 또는: 버전(5개 파일) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
+# 또는: 버전(package.json + lock) + docs/releases/vX.Y.Z.md 를 담은 PR 을 main 에 머지하면 태그·빌드·공개까지 자동
 ```
 
 ## 라이선스

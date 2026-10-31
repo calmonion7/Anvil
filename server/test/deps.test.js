@@ -1,4 +1,4 @@
-// 준비물 확인·forge 플러그인 버전 — src-tauri/src/deps.rs 단위 테스트 이식([설치]·tmux 몫은 빠졌다).
+// 준비물 확인·forge 플러그인 버전 — 옛 Rust판(v0.1.x) deps.rs 단위 테스트 이식([설치] 몫은 빠졌다).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

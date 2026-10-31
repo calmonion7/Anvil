@@ -2,6 +2,7 @@
 author: taebro
 decided: 2026-10-24 20:29
 ---
+Status: Superseded by ADR-261030-005852 (Electron 데스크톱 앱 — 6/6에서 은퇴)
 # macOS에서는 tmux·jq를 앱에 내장하고 항상 그것을 쓴다
 
 깨끗한 맥(가상머신)에서 v0.1.1을 설치해 보니, 준비물 중 tmux(와 선택 사항인 jq)만 Homebrew를 요구했다 — 관리자 비밀번호·터미널 명령·개발자 도구 설치(5~10분)라 개발자가 아닌 사용자는 여기서 막힌다. 그래서 macOS 배포판은 유니버설 tmux(libevent 정적 링크)와 공식 jq 실행 파일을 `src-tauri/resources/bin/`에 **미리 빌드해 커밋**하고 앱 번들에 넣으며, 시스템에 tmux가 있어도 **항상 내장본**을 쓴다. 이미 떠 있는 `tmux -L anvil` 서버에 붙을 수 있도록 내장 버전은 지금 Homebrew 최신과 같은 tmux 3.6a · jq 1.8.1로 고정한다. 그 결과 macOS의 준비물은 claude CLI와 forge 플러그인(둘 다 sudo 없이 설치)만 남는다. Windows(WSL)와 Linux는 기존대로 시스템 tmux를 쓴다.

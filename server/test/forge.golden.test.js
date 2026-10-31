@@ -1,4 +1,4 @@
-// 동작 고정(pin): Rust가 화면에 보내던 Snapshot JSON(server/test/golden/, src-tauri/tests/golden.rs가 만듦)과
+// 동작 고정(pin): Rust가 화면에 보내던 Snapshot JSON(server/test/golden/, 옛 Rust판 v0.1.x가 만듦)과
 // Node 파서의 출력이 같아야 한다. 정규화: 임시 프로젝트의 절대 경로 → `<ROOT>`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { snapshot } from '../forge.js';
 
 const here = import.meta.dirname;
-const fixtures = join(here, '../../src-tauri/tests/fixtures');
+const fixtures = join(here, 'fixtures');
 
 // (골든 이름, 픽스처 폴더, `.git/HEAD` 내용 — null이면 git 아님) — golden.rs의 CASES와 같다.
 const cases = [

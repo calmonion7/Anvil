@@ -1,7 +1,7 @@
 // Anvil 세션 상태 훅 — claude가 SessionStart·UserPromptSubmit·PostToolUse·Stop·Notification·SessionEnd 때
 // `node anvil-hook.js <데이터 폴더> <상태>`로 부른다(설정은 session.js가 쓰는 hooks.json).
 // `<데이터 폴더>/sessions/<ANVIL_SESSION>.json`에 {state, session_id, ts}를 남긴다. 어떤 경우에도 claude를 막지 않도록 늘 exit 0.
-// sh판(src-tauri session.rs HOOK_SCRIPT)의 입력 대기 OS 알림은 별도 작업이라 옮기지 않았다.
+// 옛 sh판 훅(v0.1.x)의 입력 대기 OS 알림은 별도 작업이라 옮기지 않았다.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

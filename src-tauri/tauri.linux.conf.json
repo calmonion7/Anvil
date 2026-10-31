@@ -1,8 +1,0 @@
-{
-  "bundle": {
-    "resources": {
-      "resources/bin-linux/tmux-x86_64": "bin/tmux",
-      "resources/bin-linux/jq-x86_64": "bin/jq"
-    }
-  }
-}

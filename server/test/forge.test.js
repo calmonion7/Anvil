@@ -1,4 +1,4 @@
-// forge 읽기 — src-tauri/tests/forge.rs 27개 사례 이식(골든 밖의 고정 사실) + 프로젝트 목록·문서 읽기·감시(lib.rs 몫).
+// forge 읽기 — 옛 Rust판(v0.1.x) tests/forge.rs 27개 사례 이식(골든 밖의 고정 사실) + 프로젝트 목록·문서 읽기·감시(lib.rs 몫).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import * as forge from '../forge.js';
 import { parseFollowups, readHead, resolveRoot, snapshot, snapshotWithHead, statusField } from '../forge.js';
 
-const fixtures = join(import.meta.dirname, '../../src-tauri/tests/fixtures');
+const fixtures = join(import.meta.dirname, 'fixtures');
 const fixture = (name) => join(fixtures, name);
 const branch = (b) => ({ type: 'branch', branch: b });
 const DETACHED = { type: 'detached' };

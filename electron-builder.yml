@@ -15,10 +15,10 @@ npmRebuild: false
 # 네이티브 모듈(.node·spawn-helper)은 asar 안에서 실행할 수 없다.
 asarUnpack:
   - node_modules/node-pty/**
-# 아이콘은 Tauri 폴더 것을 쓴다 — 6/6에서 src-tauri/를 지울 때 옮긴다.
+# 아이콘은 icons/(OS마다 한 파일).
 # 파일 이름은 자체 업데이터(server/updater.js pickAsset)가 고르는 규칙이다 — 바꾸면 거기도 바꾼다.
 win:
-  icon: src-tauri/icons/icon.ico
+  icon: icons/icon.ico
   artifactName: Anvil-${version}-win-x64.${ext}
   target:
     - target: nsis # 사용자 범위 설치(관리자 권한 없음). 서명 없음 — 처음 한 번 SmartScreen 「추가 정보 → 실행」
@@ -27,14 +27,14 @@ nsis:
   oneClick: true
   perMachine: false
 linux:
-  icon: src-tauri/icons/icon.png
+  icon: icons/icon.png
   category: Development
   artifactName: Anvil-${version}-linux-x86_64.${ext}
   target:
     - target: AppImage
       arch: x64
 mac:
-  icon: src-tauri/icons/icon.icns
+  icon: icons/icon.icns
   identity: null
   artifactName: Anvil-${version}-mac-${arch}.${ext}
   target:

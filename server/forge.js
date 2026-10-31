@@ -1,4 +1,4 @@
-// `.forge/` 읽기 전용 파서 — src-tauri/src/forge.rs 이식. forge 규칙(브랜치 root 해석, STATUS 필드, 단계 판정,
+// `.forge/` 읽기 전용 파서 — 옛 Rust판(v0.1.x) forge.rs 이식. forge 규칙(브랜치 root 해석, STATUS 필드, 단계 판정,
 // 백로그 순서, loop.md, done 겹치기, 후속후보)을 다시 구현한다. 프로젝트 목록·문서 읽기·감시는 lib.rs 몫의 이식.
 // Anvil은 `.forge/`에 절대 쓰지 않는다(ADR 261017-211602). 계약은 server/API.md.
 import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, watch as fsWatch, writeFileSync } from 'node:fs';
