@@ -1,6 +1,6 @@
-// 준비물(node 22 이상 · claude CLI · forge 플러그인, Windows는 Git) 확인·첫 실행 자동 설치와 forge 플러그인 버전 — src-tauri/src/deps.rs 이식.
+// 준비물(node 22 이상 · claude CLI · forge 플러그인, Windows는 Git) 확인·첫 실행 자동 설치와 forge 플러그인 버전 — 옛 Rust판(v0.1.x) deps.rs 이식.
 // 설치는 버튼 없이 화면이 부르는 `deps_install`이 사용자 범위로 한다(ADR 261030-005852). 로그인은 첫 세션 안에서 claude가 받는다.
-// node는 설치하지 않는다(데스크톱 앱은 Electron 안의 node를 쓴다). tmux는 더 이상 준비물이 아니다.
+// node는 설치하지 않는다(데스크톱 앱은 Electron 안의 node를 쓴다).
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

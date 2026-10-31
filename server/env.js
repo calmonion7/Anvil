@@ -1,5 +1,5 @@
 // claude·node를 찾는 PATH와 `.claude`가 있는 홈 — 준비물 확인(deps.js)과 세션(session.js)이 같이 쓴다.
-// src-tauri/src/session.rs의 login_path · run_path · claude_home 이식(내장 tmux·jq 폴더와 WSL은 없다).
+// 옛 Rust판(v0.1.x) session.rs의 login_path · run_path · claude_home 이식.
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';

@@ -1,4 +1,4 @@
-// 단축 버튼 자동완성용 슬래시 명령 목록 — 설치된 플러그인·사용자·프로젝트의 스킬과 명령 파일을 읽는다(src-tauri/src/slash.rs 이식).
+// 단축 버튼 자동완성용 슬래시 명령 목록 — 설치된 플러그인·사용자·프로젝트의 스킬과 명령 파일을 읽는다(옛 Rust판(v0.1.x) slash.rs 이식).
 // Claude 내장 명령(/clear 등)은 파일이 없어 여기서 못 읽는다(화면이 덧붙인다).
 import { readFileSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';

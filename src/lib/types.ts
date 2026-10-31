@@ -1,4 +1,4 @@
-// Rust `forge::Snapshot`의 JSON 모양(src-tauri/src/forge.rs).
+// 서버 forge 스냅숏의 JSON 모양(server/forge.js — 옛 Rust판 `forge::Snapshot`과 같은 모양, server/test/golden/로 고정).
 
 export type Stage = "run" | "retro" | "seal";
 export type CheckResult = "pass" | "fail" | "waiting" | "unknown";
@@ -48,12 +48,12 @@ export interface Snapshot {
 
 export type SessionStateName = "working" | "waiting" | "ended" | "starting";
 
-/** 훅이 남긴 세션 상태 + tmux 생존 여부(src-tauri/src/session.rs) */
+/** 훅이 남긴 세션 상태 + 서버가 쥔 pty 생존 여부(server/session.js) */
 export interface SessionState { state: SessionStateName; sessionId: string | null; alive: boolean }
 
 export type Role = "plan" | "run";
 
-/** 상태줄 래퍼가 남긴 세션의 실제 모델·effort(src-tauri/src/session.rs `ModelInfo`) */
+/** 상태줄 래퍼가 남긴 세션의 실제 모델·effort(server/session.js) */
 export interface ModelInfo { model: string | null; effort: string | null }
 
 /** 세션에 붙이는 claude 이름과 띄울 때 모델(`session_titles`) */

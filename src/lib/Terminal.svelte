@@ -24,7 +24,7 @@
       lineHeight: 1.2,
       cursorBlink: true,
       macOptionIsMeta: true,
-      scrollback: 10000, // tmux가 없으니 스크롤백은 xterm이 맡는다(다시 붙으면 서버가 최근 출력을 재생)
+      scrollback: 10000, // 스크롤백은 xterm이 맡는다(다시 붙으면 서버가 최근 출력을 재생)
       theme: { background: "#111110", foreground: "#e6e5e0", cursor: "#e6e5e0", selectionBackground: "#3987e566" },
     });
     const fit = new FitAddon();

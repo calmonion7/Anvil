@@ -1,6 +1,6 @@
 // 상태줄 래퍼 — claude가 상태줄을 그릴 때 `node anvil-statusline.js <데이터 폴더>`로 부른다(훅 입력에는 모델이 없다).
 // 넘어온 JSON의 모델·effort를 `<데이터 폴더>/models/<ANVIL_SESSION>.json`에 남긴 뒤, 같은 입력으로 사용자의 원래
-// 상태줄 명령을 실행해 출력을 그대로 내보낸다. sh·jq판(src-tauri session.rs STATUSLINE_SCRIPT) 이식.
+// 상태줄 명령을 실행해 출력을 그대로 내보낸다. 옛 sh·jq판(v0.1.x) 이식.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';

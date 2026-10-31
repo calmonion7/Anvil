@@ -1,4 +1,4 @@
-// 세션 — 서버가 node-pty로 쥐는 claude 하나(tmux 없음). src-tauri/src/session.rs · slash.rs · lib.rs 세션 명령 이식. 계약은 server/API.md.
+// 세션 — 서버가 node-pty로 쥐는 claude 하나. 옛 Rust판(v0.1.x) session.rs · slash.rs · lib.rs 세션 명령 이식. 계약은 server/API.md.
 // 세션 상태는 서버가 아니라 claude 훅(hooks/anvil-hook.js)이 데이터 폴더 `sessions/<세션 이름>.json`에 남기고,
 // 실제 모델·effort는 상태줄 래퍼(hooks/anvil-statusline.js)가 `models/<세션 이름>.json`에 남긴다.
 // 화면 연결이 끊겨도 pty는 남고, 다시 붙는 화면에 최근 출력을 재생한다. node-pty는 `./pty.js`로 불러온다.
