@@ -22,13 +22,30 @@ test("[프로젝트 추가]: 고른 폴더를 등록한다", async ({ page }) =>
   await expect.poll(() => ipc.calls.find((c) => c.cmd === "add_project")?.args).toEqual({ path: "/p/picked" });
 });
 
-test("[프로젝트 추가]: 폴더 창이 없는 OS면 경로를 입력받는다", async ({ page }) => {
+test("[프로젝트 추가]: 폴더 창이 없는 OS면 화면 안 입력칸으로 경로를 받는다(Electron은 prompt()가 없다)", async ({ page }) => {
   const ipc = await mockIpc(page);
   ipc.pick = { unsupported: true };
   await page.goto("/");
-  page.once("dialog", (d) => d.accept("/p/typed"));
   await page.getByRole("button", { name: "＋ 프로젝트 추가" }).click();
+  const ask = page.getByRole("dialog", { name: "프로젝트 추가" });
+  const add = ask.getByRole("button", { name: "추가", exact: true });
+  await expect(add).toBeDisabled();
+  await ask.getByLabel("프로젝트 폴더의 절대 경로").fill("  /p/typed ");
+  await add.click();
   await expect.poll(() => ipc.calls.find((c) => c.cmd === "add_project")?.args).toEqual({ path: "/p/typed" });
+  await expect(ask).toBeHidden();
+});
+
+test("[프로젝트 추가]: 경로 입력칸은 Esc로 닫히고 아무것도 등록하지 않는다", async ({ page }) => {
+  const ipc = await mockIpc(page);
+  ipc.pick = { unsupported: true };
+  await page.goto("/");
+  await page.getByRole("button", { name: "＋ 프로젝트 추가" }).click();
+  const ask = page.getByRole("dialog", { name: "프로젝트 추가" });
+  await ask.getByLabel("프로젝트 폴더의 절대 경로").fill("/p/typed");
+  await page.keyboard.press("Escape");
+  await expect(ask).toBeHidden();
+  expect(ipc.calls.some((c) => c.cmd === "add_project")).toBe(false);
 });
 
 test("세션 터미널은 웹소켓으로 붙고, 받은 출력을 그리고, 입력을 보낸다", async ({ page }) => {

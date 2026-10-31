@@ -331,6 +331,9 @@
     };
   });
 
+  /** 폴더 고르기 창이 없는 OS(macOS 아님)의 경로 입력칸 — Electron은 prompt()를 지원하지 않는다(Windows VM UAT 2026-10-31) */
+  let pathAsk = $state<{ value: string; error: string; busy: boolean } | null>(null);
+
   async function addProject() {
     let dir: unknown;
     try {
@@ -339,15 +342,37 @@
       loadError = String(e);
       return;
     }
-    // 폴더 고르기 창이 없는 OS(macOS 아님)는 경로를 직접 받는다
-    if (dir && typeof dir === "object") dir = prompt(t("프로젝트 폴더의 절대 경로", "Absolute path of the project folder"))?.trim() || null;
+    if (dir && typeof dir === "object") {
+      pathAsk = { value: "", error: "", busy: false };
+      return;
+    }
     if (typeof dir !== "string") return;
     try {
-      projects = await call<Snapshot[]>("add_project", { path: dir });
-      await loadNames(projects);
-      selectProject(dir);
+      await register(dir);
     } catch (e) {
       loadError = String(e);
+    }
+  }
+
+  async function register(dir: string) {
+    projects = await call<Snapshot[]>("add_project", { path: dir });
+    await loadNames(projects);
+    selectProject(dir);
+  }
+
+  /** 입력칸의 [추가] — 실패하면 입력을 남긴 채 오류를 보여 고쳐서 다시 누르게 한다 */
+  async function submitPath() {
+    const ask = pathAsk;
+    const dir = ask?.value.trim();
+    if (!ask || !dir) return;
+    ask.busy = true;
+    ask.error = "";
+    try {
+      await register(dir);
+      pathAsk = null;
+    } catch (e) {
+      ask.error = String(e);
+      ask.busy = false;
     }
   }
 
@@ -423,7 +448,8 @@
   /** Esc는 맨 위 겹침 하나만 닫는다 — 문서가 목록 팝업 위에 있으면 문서만 닫고 목록으로 돌아간다. */
   function onKey(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
-    if (activeTab !== null) showTab(null);
+    if (pathAsk) pathAsk = null;
+    else if (activeTab !== null) showTab(null);
     else if (listOpen) listOpen = null;
     else return;
     e.preventDefault();
@@ -687,6 +713,22 @@
       </div>
     {/if}
   </section>
+  {#if pathAsk}
+    <!-- 바깥(어두운 바탕) 클릭이나 Esc로 닫힌다 -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="scrim" onclick={(e) => e.target === e.currentTarget && (pathAsk = null)}>
+      <div role="dialog" aria-modal="true" aria-label={t("프로젝트 추가", "Add project")}><form class="ask" onsubmit={(e) => { e.preventDefault(); submitPath(); }}>
+        <label class="b" for="ask-path">{t("프로젝트 폴더의 절대 경로", "Absolute path of the project folder")}</label>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input id="ask-path" bind:value={pathAsk.value} autofocus spellcheck="false" autocomplete="off" placeholder={deps?.platform === "windows" ? "C:\\Users\\me\\project" : "/home/me/project"} />
+        {#if pathAsk.error}<div class="err">{pathAsk.error}</div>{/if}
+        <div class="row">
+          <button type="button" class="btn" onclick={() => (pathAsk = null)}>{t("취소", "Cancel")}</button>
+          <button type="submit" class="btn" disabled={!pathAsk.value.trim() || pathAsk.busy}>{t("추가", "Add")}</button>
+        </div>
+      </form></div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -718,6 +760,13 @@
   .add.set { margin-top: 0; }
   .settings { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; }
   .settings label { display: flex; flex-direction: column; gap: 4px; }
+  .scrim { position: fixed; inset: 0; z-index: 3; background: rgba(0, 0, 0, .35); display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; }
+  .scrim > div { width: min(560px, 100%); }
+  .ask { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--plane); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+  .ask input { height: 32px; font: 12px "SF Mono", ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 0 8px; }
+  .ask input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .ask .err { color: var(--crit); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ask .row { display: flex; justify-content: flex-end; gap: 8px; }
   .settings select { min-height: 32px; font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .skels { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
   .skels.wide { width: 360px; }
