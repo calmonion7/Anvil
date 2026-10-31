@@ -128,7 +128,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     await expect.poll(() => serverPid(), { timeout: 15_000 }).toBe(restarted.pid);
     pid = restarted.pid!;
     await expect
-      .poll(() => win2.evaluate(async () => (await fetch("/api/session_states", { method: "POST" })).status), { timeout: 15_000 })
+      .poll(() => win2.evaluate(async () => (await fetch("/api/session_states", { method: "POST" })).status).catch(() => 0), { timeout: 15_000 }) // 새 토큰으로 다시 여는 중이면 맥락이 사라진다 — 다시 본다
       .toBe(200);
     await expect(win2.getByText("서버가 다시 시작되었습니다")).toHaveCount(0);
     step("6. 두 번째 앱 종료");
