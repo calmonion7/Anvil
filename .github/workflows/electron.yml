@@ -26,9 +26,10 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      # Windows는 테스트가 다 끝난 뒤에도 node-pty ConPTY가 이벤트 루프를 붙잡아 프로세스가 끝나지 않는다(CI 실측) — 끝나면 강제 종료
+      # Windows는 테스트가 다 끝난 뒤에도 node-pty ConPTY(세션 종료 때 AttachConsole failed)가 테스트 하위 프로세스를 붙잡아 끝나지 않는다(CI 실측).
+      # 하위 프로세스 없이 같은 프로세스에서 돌려 끝나면 강제 종료한다 — 이 방식은 디렉터리 인자를 받지 않아 진입 파일을 준다.
       - name: 서버 테스트
-        run: node --test --test-force-exit server/
+        run: node --test --test-isolation=none --test-force-exit server/index.js
 
       - name: Electron 스모크(Linux — 가상 화면)
         if: runner.os == 'Linux'

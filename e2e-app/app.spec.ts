@@ -38,6 +38,17 @@ function fakeClaude(dir: string) {
   return f;
 }
 
+/** 앱을 띄운다 — 앱 프로세스의 출력을 테스트 로그로 흘려 CI에서 어디서 멈췄는지 보이게 한다 */
+async function launchApp(env: Record<string, string>) {
+  const app = await electron.launch({ args: appArgs, env });
+  const tag = `[app ${app.process().pid}]`;
+  app.process().stdout?.on("data", (d) => process.stdout.write(`${tag} ${d}`));
+  app.process().stderr?.on("data", (d) => process.stdout.write(`${tag} ${d}`));
+  return app;
+}
+/** 단계 표시 — 시간 초과 때 마지막으로 찍힌 단계가 멈춘 곳이다 */
+const step = (s: string) => console.log(`▶ ${s}`);
+
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -57,19 +68,24 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     ANVIL_SKIP_DEPS: "1", // 러너에는 claude·forge가 없다 — 「준비 중」·자동 설치를 건너뛴다
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const launch = () => electron.launch({ args: appArgs, env });
+  const launch = () => launchApp(env);
   const serverPid = () => JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
   const board = (win: Awaited<ReturnType<Awaited<ReturnType<typeof launch>>["firstWindow"]>>) =>
     expect(win.getByRole("button", { name: ADD_PROJECT }).first()).toBeVisible({ timeout: 30_000 });
   let pid = 0;
   try {
+    step("1. 앱 실행");
     const first = await launch();
+    step("2. 첫 창·보드");
     await board(await first.firstWindow());
     pid = serverPid();
+    step("3. 앱 종료");
     await first.close();
+    step("4. 앱 종료됨");
     await new Promise((r) => setTimeout(r, 1000));
     expect(alive(pid), "앱을 끈 뒤에도 서버가 살아 있어야 한다").toBe(true);
 
+    step("5. 다시 실행");
     const second = await launch();
     // Finder·Dock으로 열면 macOS가 시작 직후 `activate`를 보낸다 — 서버 확인 중에 와도 창을 두 번 열다 ERR_ABORTED로 죽지 않아야 한다(UAT 2026-10-30).
     await second.evaluate(({ app }) => app.emit("activate"));
@@ -88,6 +104,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
       .poll(() => win2.evaluate(async () => (await fetch("/api/session_states", { method: "POST" })).status), { timeout: 15_000 })
       .toBe(200);
     await expect(win2.getByText("서버가 다시 시작되었습니다")).toHaveCount(0);
+    step("6. 두 번째 앱 종료");
     await second.close();
   } finally {
     if (pid && alive(pid)) process.kill(pid);
@@ -114,7 +131,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     FAKE_OUT: out,
   };
   delete env.ELECTRON_RUN_AS_NODE;
-  const launch = () => electron.launch({ args: appArgs, env });
+  const launch = () => launchApp(env);
   const serverPid = () => JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
   type Win = Awaited<ReturnType<Awaited<ReturnType<typeof launch>>["firstWindow"]>>;
   type States = Record<string, { alive: boolean; sessionId: string | null }>;
@@ -127,7 +144,9 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
   const sessionOf = async (win: Win, name: string) => ((await call(win, "session_states")) as States)[name];
   let pid = 0;
   try {
+    step("1. 앱 실행");
     const first = await launch();
+    step("2. 첫 창·보드");
     const win = await first.firstWindow();
     await expect(win.getByRole("button", { name: ADD_PROJECT }).first()).toBeVisible({ timeout: 30_000 });
     const name = (await call(win, "session_start", { project, role: "plan" })) as string;
@@ -151,16 +170,20 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     );
     expect(screen).toContain("ready>");
     pid = serverPid();
+    step("3. 앱 종료");
     await first.close();
+    step("4. 앱 종료됨");
     process.kill(pid, "SIGKILL");
     await expect.poll(() => alive(pid)).toBe(false);
 
+    step("5. 다시 실행");
     const second = await launch();
     const win2 = await second.firstWindow();
     await expect.poll(async () => (await sessionOf(win2, name).catch(() => undefined))?.alive, { timeout: 30_000 }).toBe(true);
     pid = serverPid();
     const args = JSON.parse(readFileSync(out, "utf8")).args as string[];
     expect(args[args.indexOf("--resume") + 1], args.join(" ")).toBe(sid);
+    step("6. 두 번째 앱 종료");
     await second.close();
   } finally {
     if (pid && alive(pid)) process.kill(pid, "SIGKILL");
