@@ -58,6 +58,12 @@ async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
   if (!ok && process.platform !== "win32") console.log(execSync("ps -eo pid,ppid,command | grep -i -E 'electron|anvil' | grep -v grep || true").toString());
   expect(ok, "앱이 종료되어야 한다").toBe(true);
 }
+/** 임시 폴더 정리 — Windows는 막 끝낸 서버·claude가 파일을 잠깐 쥐고 있어(CI 실측 EPERM) 다시 시도하고, 그래도 안 되면 둔다 */
+function cleanup(dir: string) {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch {}
+}
 /** 단계 표시 — 시간 초과 때 마지막으로 찍힌 단계가 멈춘 곳이다 */
 const step = (s: string) => console.log(`▶ ${s}`);
 
@@ -120,7 +126,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     await quitApp(second);
   } finally {
     if (pid && alive(pid)) process.kill(pid);
-    rmSync(dataDir, { recursive: true, force: true });
+    cleanup(dataDir);
   }
 });
 
@@ -199,6 +205,6 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     await quitApp(second);
   } finally {
     if (pid && alive(pid)) process.kill(pid, "SIGKILL");
-    rmSync(dir, { recursive: true, force: true });
+    cleanup(dir);
   }
 });
