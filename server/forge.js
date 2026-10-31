@@ -167,8 +167,9 @@ class Reader {
     this.errors = [];
   }
 
+  /** 프로젝트 기준 상대 경로 — Windows에서도 `/`로(화면·골든이 같은 모양을 본다. read_doc은 resolve로 둘 다 받는다) */
   rel(p) {
-    return relative(this.project, p);
+    return relative(this.project, p).split(sep).join('/');
   }
 
   /** 읽지 못하면 그 파일만 오류로 남기고 null(없는 파일은 조용히 null). */

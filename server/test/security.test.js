@@ -94,7 +94,7 @@ test('시작하면 토큰을 데이터 폴더에 600으로 쓰고 같은 토큰�
   assert.equal(new URL(bootUrl).port, String(port));
   assert.ok(token.length >= 32);
   assert.equal(readFileSync(join(dataDir, 'token'), 'utf8').trim(), token);
-  assert.equal(statSync(join(dataDir, 'token')).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(statSync(join(dataDir, 'token')).mode & 0o777, 0o600); // Windows에는 POSIX 권한이 없다
 });
 
 test('API: 토큰이 없거나 틀리면 401', async () => {

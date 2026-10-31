@@ -75,7 +75,7 @@ after(async () => {
       if (s.alive) await c.session_kill({ name }, ctx);
     }
   }
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); // Windows는 막 끝난 pty 프로세스가 파일을 잠깐 쥐고 있다
 });
 
 test('훅이 남긴 세션 상태가 입력 대기 → 작업 중 → 입력 대기 → 종료로 바뀌고 sessions 이벤트로 나간다', { skip }, async () => {

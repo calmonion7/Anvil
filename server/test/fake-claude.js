@@ -20,7 +20,9 @@ if (process.env.FAKE_OUT) {
 }
 hook('SessionStart');
 process.stdout.write('ready>\n');
-createInterface({ input: process.stdin }).on('line', (line) => {
+createInterface({ input: process.stdin }).on('line', (raw) => {
+  // ^U(줄 지우기)는 실제 claude가 스스로 처리한다 — POSIX 터미널은 대신 지워 주지만 Windows ConPTY는 그대로 넘긴다
+  const line = raw.slice(raw.lastIndexOf('\x15') + 1);
   if (line === 'go') {
     hook('UserPromptSubmit');
     console.log('busy');
