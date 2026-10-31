@@ -4,6 +4,8 @@
 
 같은 데이터 폴더에 살아 있는 서버가 있으면(`instance.js` `running()`) 새로 뜨지 않고 `Anvil: 이미 실행 중 <첫 주소>`를 찍고 0으로 끝난다. 살아 있는 세션도 붙은 웹소켓도 없는 상태가 `ANVIL_IDLE_MS`(기본 5분, `0`이면 끔) 이어지면 `server.json`을 지우고 0으로 끝난다. 데스크톱 앱(`electron/main.js`)은 Electron을 `ELECTRON_RUN_AS_NODE=1`로 이 파일에 부른다.
 
+테스트 전용 환경변수: `ANVIL_CLAUDE`(claude 자리에 띄울 실행 파일 — 가짜 claude), `ANVIL_SKIP_DEPS`(준비물이 다 있는 것으로 답한다 — 준비물이 없는 CI 러너의 앱 스모크용).
+
 ## 보안
 
 | 검사 | 대상 | 거절 |

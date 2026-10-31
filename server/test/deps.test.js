@@ -72,6 +72,24 @@ function fakeExec({ fail = () => null, out = () => '' } = {}) {
 }
 const states = (items) => items.map((i) => [i.need, i.state]);
 
+// CI의 앱 스모크(4/6): 러너에는 claude·forge가 없어 「준비 중」이 보드를 가리고, 자동 설치가 러너 홈에 실제로 설치하려 든다.
+test('ANVIL_SKIP_DEPS가 있으면 준비물이 다 있는 것으로 답한다(테스트 전용)', async () => {
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  const home = mkdtempSync(join(tmpdir(), 'anvil-deps-home-')); // forge가 설치되지 않은 홈
+  Object.assign(process.env, { HOME: home, USERPROFILE: home });
+  try {
+    const { commands } = await import('../deps.js');
+    assert.ok((await commands.deps_status()).needs.includes('forge'), '대조: 건너뛰지 않으면 forge가 빠진다');
+    process.env.ANVIL_SKIP_DEPS = '1';
+    assert.deepEqual((await commands.deps_status()).needs, []);
+  } finally {
+    delete process.env.ANVIL_SKIP_DEPS;
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('Windows는 forge가 있어도 Git을 확인한다(claude가 Git Bash로 돈다)', () => {
   assert.deepEqual(missing((p) => p !== 'git', 'v22.20.0', true, 'windows'), ['git']);
   assert.deepEqual(missing((p) => p !== 'git', 'v22.20.0', true, 'linux'), []);

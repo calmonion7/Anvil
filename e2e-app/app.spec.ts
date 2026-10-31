@@ -52,6 +52,7 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     ANVIL_DATA_DIR: dataDir,
     ANVIL_PORT: String(await freePort()),
     ANVIL_CLAUDE: join(root, "server/test/fake-claude.js"),
+    ANVIL_SKIP_DEPS: "1", // 러너에는 claude·forge가 없다 — 「준비 중」·자동 설치를 건너뛴다
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const launch = () => electron.launch({ args: appArgs, env });
@@ -107,6 +108,7 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
     ANVIL_DATA_DIR: dataDir,
     ANVIL_PORT: String(await freePort()),
     ANVIL_CLAUDE: fake,
+    ANVIL_SKIP_DEPS: "1",
     FAKE_OUT: out,
   };
   delete env.ELECTRON_RUN_AS_NODE;

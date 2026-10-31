@@ -71,6 +71,8 @@ async function probeOut(prog, args) {
 }
 
 async function status() {
+  // 테스트 전용: CI의 앱 스모크는 준비물이 없는 러너에서 돈다 — 「준비 중」이 보드를 가리고 자동 설치가 러너 홈에 실제로 깔지 않게
+  if (process.env.ANVIL_SKIP_DEPS) return { needs: [], message: null, installable: false, platform };
   const progs = [
     ['node', ['--version']],
     ['claude', ['--version']],
