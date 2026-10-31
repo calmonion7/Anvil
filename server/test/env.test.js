@@ -2,7 +2,13 @@
 // Windows node-pty는 실행 파일을 서버 자신의 Path에서 이름 그대로만 찾는다(확장자를 붙이지 않는다 — node-pty src/win/path_util.cc).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findCommand, spawnTarget, withPath } from '../env.js';
+import { findCommand, spawnTarget, windowsLoginPath, withPath } from '../env.js';
+
+test('Windows: 서버가 뜬 뒤 깐 Git도 찾게 Git 표준 설치 폴더(시스템·사용자 범위)를 PATH 뒤에 붙인다', () => {
+  const env = { PATH: 'C:\\Windows\\system32', ProgramFiles: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\t\\AppData\\Local' };
+  assert.equal(windowsLoginPath(env), 'C:\\Windows\\system32;C:\\Program Files\\Git\\cmd;C:\\Users\\t\\AppData\\Local\\Programs\\Git\\cmd');
+  assert.equal(windowsLoginPath({ PATH: 'C:\\x' }), 'C:\\x', '설치 폴더 환경변수가 없으면 붙이지 않는다');
+});
 
 test('환경의 PATH는 대소문자가 다른 이름(Path 등)을 지우고 하나만 남긴다', () => {
   const env = withPath({ Path: 'C:\\old', PATH: 'x', path: 'y', HOME: 'h' }, 'C:\\new');

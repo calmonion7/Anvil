@@ -13,7 +13,7 @@ let nodeBin = '';
 export function loginPath() {
   if (login !== undefined) return login;
   const env = process.env.PATH ?? '';
-  if (process.platform === 'win32') return (login = env);
+  if (process.platform === 'win32') return (login = windowsLoginPath(process.env));
   let fromShell;
   try {
     const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', "printf '__ANVIL_PATH__%s__END__' \"$PATH\""], {
@@ -25,6 +25,13 @@ export function loginPath() {
   } catch {}
   // 셸 설정이 깨져 있어도 claude는 찾게 한다.
   return (login = `${fromShell ?? env}:/opt/homebrew/bin:/usr/local/bin:${homedir()}/.local/bin:/usr/bin:/bin`);
+}
+
+/** Windows 로그인 PATH: 서버 PATH는 뜰 때 값이라 「준비 중」이 그 뒤에 깐 Git이 없다 — claude가 git(마켓플레이스 받기·Git Bash)을
+ *  찾게 Git 표준 설치 폴더(시스템·사용자 범위)를 뒤에 붙인다(VM UAT 2026-10-31). */
+export function windowsLoginPath(env) {
+  const git = [env.ProgramFiles, env.LOCALAPPDATA && win32.join(env.LOCALAPPDATA, 'Programs')].filter(Boolean).map((d) => win32.join(d, 'Git', 'cmd'));
+  return [env.PATH ?? '', ...git].join(';');
 }
 
 /**
