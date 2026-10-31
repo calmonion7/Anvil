@@ -1,8 +1,8 @@
 // Anvil 데스크톱 앱 주 프로세스 — 창만 맡는다(ADR 261030-005852). 서버(server/main.js)는 앱과 떨어진 프로세스다:
 // 열릴 때 데이터 폴더의 서버 정보(server.json·token)로 살아 있는 서버에 붙고, 없으면 이 Electron을 node로(ELECTRON_RUN_AS_NODE)
 // detached로 띄운다. 앱을 꺼도(Cmd+Q) 서버에는 아무 신호도 보내지 않아 세션이 산다 — 서버는 세션도 창도 없이 5분 지나면 스스로 내려간다.
-// 창은 서버 화면만 연다(contextIsolation · nodeIntegration 없음 · preload 없음). 서버 주소 밖으로는 이동하지 않고, 바깥 링크는 브라우저로 연다.
-import { BrowserWindow, app, dialog, session, shell } from 'electron';
+// 창은 서버 화면만 연다(contextIsolation · nodeIntegration 없음 · preload는 폴더 고르기 하나만 — preload.cjs). 서버 주소 밖으로는 이동하지 않고, 바깥 링크는 브라우저로 연다.
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, watch } from 'node:fs';
 import { homedir } from 'node:os';
@@ -58,7 +58,7 @@ function createWindow() {
     width: 1280,
     height: 820,
     title: 'Anvil',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: join(import.meta.dirname, 'preload.cjs') },
   });
   const guard = (e, url) => {
     let to;
@@ -80,6 +80,17 @@ function createWindow() {
   });
   win.on('closed', () => (win = null));
 }
+
+/** 화면의 [프로젝트 추가] — OS 기본 폴더 창을 Anvil 창에 붙여 연다. 서버 출처의 화면만 부를 수 있다. → 경로 또는 null(취소) */
+ipcMain.handle('pick-folder', async (e) => {
+  let from;
+  try {
+    from = new URL(e.senderFrame?.url ?? '').origin;
+  } catch {}
+  if (!win || from !== origin) return null;
+  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled ? null : (r.filePaths[0] ?? null);
+});
 
 /** 서버에 붙어 창을 연다(이미 열려 있으면 새 토큰 주소로 다시 연다). */
 async function openOnce() {

@@ -22,7 +22,18 @@ test("[프로젝트 추가]: 고른 폴더를 등록한다", async ({ page }) =>
   await expect.poll(() => ipc.calls.find((c) => c.cmd === "add_project")?.args).toEqual({ path: "/p/picked" });
 });
 
-test("[프로젝트 추가]: 폴더 창이 없는 OS면 화면 안 입력칸으로 경로를 받는다(Electron은 prompt()가 없다)", async ({ page }) => {
+test("[프로젝트 추가]: 데스크톱 앱이면 앱의 OS 기본 폴더 창(preload pickFolder)으로 고르고 서버 창은 부르지 않는다", async ({ page }) => {
+  const ipc = await mockIpc(page);
+  await page.addInitScript(() => {
+    (window as unknown as { anvilDesktop: unknown }).anvilDesktop = { pickFolder: async () => "/p/native" };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "＋ 프로젝트 추가" }).click();
+  await expect.poll(() => ipc.calls.find((c) => c.cmd === "add_project")?.args).toEqual({ path: "/p/native" });
+  expect(ipc.calls.some((c) => c.cmd === "pick_folder")).toBe(false);
+});
+
+test("[프로젝트 추가]: 브라우저에서 폴더 창이 없는 OS면 화면 안 입력칸으로 경로를 받는다", async ({ page }) => {
   const ipc = await mockIpc(page);
   ipc.pick = { unsupported: true };
   await page.goto("/");

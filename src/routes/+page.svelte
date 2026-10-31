@@ -331,13 +331,15 @@
     };
   });
 
-  /** 폴더 고르기 창이 없는 OS(macOS 아님)의 경로 입력칸 — Electron은 prompt()를 지원하지 않는다(Windows VM UAT 2026-10-31) */
+  /** 브라우저에서 폴더 창이 없는 OS(macOS 아님)의 경로 입력칸 — prompt()는 Electron에 없어 화면 안에 띄운다 */
   let pathAsk = $state<{ value: string; error: string; busy: boolean } | null>(null);
+  /** 데스크톱 앱의 preload(electron/preload.cjs) — 있으면 OS 기본 폴더 창을 Anvil 창에 붙여 연다(세 OS 모두) */
+  const desktop = (globalThis as { anvilDesktop?: { pickFolder(): Promise<string | null> } }).anvilDesktop;
 
   async function addProject() {
     let dir: unknown;
     try {
-      dir = await call<string | null | { unsupported: true }>("pick_folder");
+      dir = desktop ? await desktop.pickFolder() : await call<string | null | { unsupported: true }>("pick_folder");
     } catch (e) {
       loadError = String(e);
       return;

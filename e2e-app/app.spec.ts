@@ -106,8 +106,18 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     step("1. 앱 실행");
     const first = await launch();
     step("2. 첫 창·보드");
-    await board(await first.firstWindow());
+    const win1 = await first.firstWindow();
+    await board(win1);
     pid = serverPid();
+    // [프로젝트 추가]는 세 OS 모두 OS 기본 폴더 창(dialog.showOpenDialog)으로 고른다 — 창은 가짜로 바꿔 고른 폴더를 바로 돌려준다
+    step("2-1. 프로젝트 추가");
+    const picked = join(dataDir, "picked-proj");
+    mkdirSync(picked);
+    await first.evaluate(({ dialog }, dir) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as unknown as typeof dialog.showOpenDialog;
+    }, picked);
+    await win1.getByRole("button", { name: ADD_PROJECT }).first().click();
+    await expect(win1.getByText("picked-proj").first()).toBeVisible({ timeout: 15_000 });
     step("3. 앱 종료");
     await quitApp(first);
     step("4. 앱 종료됨");
