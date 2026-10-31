@@ -59,3 +59,15 @@
 <!-- followup: fu-c3a3fcbe8a0d | source: electron-app-3of6 | task: 24 | date: 2026-10-31 | status: open | taken: - -->
 - UAT 뒤에 고친 "개발자 도구 설치 창 앞으로 가져오기·[설치] 안내"를 실제 화면으로 확인하지 못했다. 다음 VM UAT(4/6 또는 5/6 릴리스 확인) 때 깨끗한 macOS 복제본에서 설치 창이 앞에 뜨는지와 「준비 중」에 안내가 보이는지 함께 볼 것.
   Evidence: VM `anvil-3of6`에는 수정 전 빌드가 들어 있었다(run.md 「UAT에서 나온 것」). 수정은 `server/test/deps.test.js`로만 확인.
+
+<!-- followup: fu-5e0a7d31c4b2 | source: electron-app-4of6 | task: 25 | date: 2026-10-31 | status: open | taken: - -->
+- CI에서 세 OS 모두 가끔 Electron 앱이 `app.quit` 뒤 30초가 지나도 끝나지 않았다(주 프로세스·렌더러·서버 자식이 그대로). 화면 코드에 `beforeunload`는 없다. 스모크는 경고 뒤 강제 종료로 넘어간다 — 실제 앱에서도 창을 닫거나 Cmd+Q 뒤 프로세스가 남는지 원인을 찾을 것.
+  Evidence: CI `41180387338` macOS 잡 로그의 남은 프로세스 목록(14327 Electron·렌더러·server/main.js), Windows `⚠ … 강제로 끝낸다` 로그. 이 Mac 로컬은 7번 중 1번. Windows VM에서 사람이 창을 닫은 두 번은 재현되지 않았다.
+
+<!-- followup: fu-c2e1e4da6e4c | source: electron-app-4of6 | task: 25 | date: 2026-10-31 | status: open | taken: - -->
+- Windows 설치 파일이 x64 하나뿐이라(`electron-builder.yml` `arch: x64`) ARM64 Windows에서는 에뮬레이션으로 돈다. 그 안에서 부른 claude 설치도 x64판(`claude-2.1.316-win32-x64.exe`)을 깔았다. 동작은 했지만 느릴 수 있다 — arm64 빌드를 함께 낼지(또는 universal) 정할 것.
+  Evidence: Windows VM UAT 2026-10-31, `anvil-4of6b` 프로세스 목록의 `claude-2.1.316-win32-x64.exe`, Git은 arm64판(`Git-2.56.0.4-arm64.exe` — winget이 OS 아키텍처를 따름).
+
+<!-- followup: fu-fac8aae17bea | source: electron-app-6of6 | task: 27 | date: 2026-10-31 | status: open | taken: - -->
+- macOS CI 앱 스모크에서 다시 연 두 번째 앱이 창을 열지 못하고(`activate` 직후 `firstWindow` 30초 초과) 그대로 꺼지지 않았다. 짐작: 창 열기가 실패하면 `fail()`이 띄우는 `dialog.showErrorBox`가 앱을 붙잡아 종료까지 막는다(`electron/main.js` `fail`). 열기 실패의 원인과, 오류 창이 테스트·실제 앱 종료를 막는지 확인할 것. fu-5e0a7d31c4b2(`app.quit` 뒤 안 꺼짐)와 함께 볼 것.
+  Evidence: run `41205397359` 시도 1 macOS 잡 — `▶ 5. 다시 실행` 뒤 90초 만에 `F`·`Worker teardown timeout of 60000ms exceeded`. 시도 2에서는 통과.
