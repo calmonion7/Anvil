@@ -108,8 +108,13 @@ async function openOnce() {
  * 두 번 열면 뒤 loadURL이 앞 것을 끊어 ERR_ABORTED로 죽는다(UAT 2026-10-30).
  */
 let opening = null;
-function open() {
-  opening ??= openOnce().finally(() => (opening = null));
+/** 지금 여는 까닭(start·activate·second-instance·token) — 열기가 실패하면 함께 남긴다 */
+let openedFor = null;
+function open(reason) {
+  if (!opening) {
+    openedFor = reason;
+    opening = openOnce().finally(() => (opening = null));
+  }
   return opening;
 }
 
@@ -119,7 +124,8 @@ app.on('before-quit', () => (quitting = true));
 
 /** 오류를 표준 오류와 `<데이터 폴더>/app.log`(600)에 남긴다. 서버 주소의 토큰은 가린다(CI 로그에는 표준 오류가 그대로 찍힌다). */
 function logError(e) {
-  const line = `${new Date().toISOString()} ${String(e?.stack ?? e?.message ?? e).replace(/token=[^\s&'"]+/g, 'token=…')}\n`;
+  const where = `[열기: ${openedFor ?? '-'}${quitting ? ' · 끄는 중' : ''}]`;
+  const line = `${new Date().toISOString()} ${where} ${String(e?.stack ?? e?.message ?? e).replace(/token=[^\s&'"]+/g, 'token=…')}\n`;
   process.stderr.write(line);
   try {
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -157,7 +163,7 @@ function followToken() {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const s = await running(dataDir);
-      if (s && s.token !== token && win) open().catch(fail);
+      if (s && s.token !== token && win) open('token').catch(fail);
     }, 300);
   });
 }
@@ -166,7 +172,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (!win) return open().catch(fail);
+    if (!win) return open('second-instance').catch(fail);
     if (win.isMinimized()) win.restore();
     win.focus();
   });
@@ -175,7 +181,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') app.quit();
   });
   app.on('activate', () => {
-    if (!win) open().catch(fail);
+    if (!win) open('activate').catch(fail);
   });
   app
     .whenReady()
@@ -183,7 +189,7 @@ if (!app.requestSingleInstanceLock()) {
       // 화면은 카메라·마이크·알림·클립보드 읽기 같은 권한을 쓰지 않는다 — 문서 속 내용이 요청해도 묻지 않고 거절한다.
       session.defaultSession.setPermissionRequestHandler((_wc, _perm, done) => done(false));
       session.defaultSession.setPermissionCheckHandler(() => false);
-      await open();
+      await open('start');
       followToken();
     })
     .catch(fail);
