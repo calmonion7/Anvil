@@ -299,6 +299,14 @@
     try {
       selected = localStorage.getItem(SELECTED_KEY);
     } catch {}
+    // 데스크톱 앱: 입력 대기 알림을 눌러 연(또는 앞으로 온) 창이면 그 프로젝트를 고른다
+    const pickNotified = () =>
+      desktop
+        ?.takeProject?.()
+        .then((p) => p && selectProject(p))
+        .catch(() => {});
+    pickNotified();
+    desktop?.onProjectPicked?.(pickNotified);
     loadLayout();
     // 백엔드 문구(요약 · 경고)가 화면 언어로 나오도록 언어를 먼저 알린 뒤 불러온다
     initLang()
@@ -358,7 +366,15 @@
   /** 브라우저에서 폴더 창이 없는 OS(macOS 아님)의 경로 입력칸 — prompt()는 Electron에 없어 화면 안에 띄운다 */
   let pathAsk = $state<{ value: string; error: string; busy: boolean } | null>(null);
   /** 데스크톱 앱의 preload(electron/preload.cjs) — 있으면 OS 기본 폴더 창을 Anvil 창에 붙여 연다(세 OS 모두) */
-  const desktop = (globalThis as { anvilDesktop?: { pickFolder(): Promise<string | null> } }).anvilDesktop;
+  const desktop = (
+    globalThis as {
+      anvilDesktop?: {
+        pickFolder(): Promise<string | null>;
+        takeProject?(): Promise<string | null>;
+        onProjectPicked?(cb: () => void): void;
+      };
+    }
+  ).anvilDesktop;
 
   async function addProject() {
     let dir: unknown;

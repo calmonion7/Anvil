@@ -1,6 +1,6 @@
 import { _electron as electron, expect, test } from "@playwright/test";
 import { execSync, spawn } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -314,5 +314,37 @@ test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으�
   } finally {
     if (pid && alive(pid)) process.kill(pid, "SIGKILL");
     cleanup(dir);
+  }
+});
+
+// 작업 #26: 창을 다 닫아도 앱이 남아 입력 대기 알림을 띄운다 — Windows·Linux는 트레이(처음 한 번 안내를 띄우고 `tray-notice`를 남긴다),
+// macOS는 Dock. 트레이 [끝내기]와 같은 app.quit으로 꺼진다.
+test("창을 닫아도 앱이 남고(트레이·Dock), 끝내기로 꺼진다", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "anvil-app-tray-"));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ANVIL_DATA_DIR: dataDir,
+    ANVIL_PORT: String(await freePort()),
+    ANVIL_SKIP_DEPS: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  let pid = 0;
+  try {
+    step("1. 앱 실행");
+    const app = await launchApp(env);
+    const win = await app.firstWindow();
+    await expect(win.getByRole("button", { name: ADD_PROJECT }).first()).toBeVisible({ timeout: 30_000 });
+    pid = JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid;
+    step("2. 창 닫기");
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(0);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(alive(app.process().pid!), "창을 다 닫아도 앱이 남는다").toBe(true);
+    expect(existsSync(join(dataDir, "tray-notice")), "Windows·Linux만 트레이에 들어가며 안내를 남긴다").toBe(process.platform !== "darwin");
+    step("3. 끝내기");
+    await quitApp(app);
+  } finally {
+    if (pid && alive(pid)) process.kill(pid);
+    cleanup(dataDir);
   }
 });

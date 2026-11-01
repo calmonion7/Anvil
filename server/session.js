@@ -7,6 +7,7 @@ import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, wa
 import { basename, join } from 'node:path';
 import { claudeHome, findCommand, runPath, setupNode, spawnTarget, withPath } from './env.js';
 import { tr } from './i18n.js';
+import { sessionName } from './names.js';
 import pty from './pty.js';
 import { collect } from './slash.js';
 
@@ -33,14 +34,7 @@ const views = new WeakMap();
 
 // ---------- 이름 · 모델 설정 ----------
 
-/** `anvil-<프로젝트키>-<plan|run>`. 키는 폴더 이름 + 경로 해시 6자리(같은 이름 폴더 구분). */
-export function sessionName(project, role) {
-  const base = [...basename(project).toLowerCase()].map((ch) => (/^[a-z0-9]$/.test(ch) ? ch : '-')).join('');
-  // FNV-1a — 실행마다 같은 값이어야 한다.
-  let h = 0x811c9dc5;
-  for (const b of Buffer.from(project)) h = Math.imul(h ^ b, 0x01000193) >>> 0;
-  return `anvil-${base}-${(h & 0xffffff).toString(16).padStart(6, '0')}-${role}`;
-}
+export { sessionName };
 
 /** claude 세션에 붙이는 이름과 기본 모델 — cxa(`~/cc.sh`) 규칙에 `[Anvil]` 접두어. 계획 = opus, 실행 = sonnet. */
 function sessionTitle(project, role) {
