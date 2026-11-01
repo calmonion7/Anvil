@@ -7,6 +7,8 @@ directories:
 files:
   - package.json
   - electron/**
+  - icons/icon.png # 트레이 아이콘(Linux)
+  - icons/icon.ico # 트레이 아이콘(Windows)
   - server/**
   - "!server/test/**"
   - build/**
