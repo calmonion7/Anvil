@@ -26,7 +26,7 @@
 - `scripts/check-release.sh`가 커밋 안 된 버전 변경(작업본 버전 ≠ HEAD 버전)을 만나면 "같은 버전: 커밋 없이 태그만" 실패 대신 "먼저 커밋하세요"로 바로 알려 주게 할 것 — 같은 함정을 task 9·16·17에서 세 번 밟았다.
   Evidence: 이번 run의 커밋 전 실행 1건 실패 → 커밋 후 실패 0; task 16 회고 "커밋한 뒤 돌린다".
 
-<!-- followup: fu-a0781a23120b | source: node-web-app-1of4 | task: 18 | date: 2026-10-29 | status: open | taken: - -->
+<!-- followup: fu-a0781a23120b | source: node-web-app-1of4 | task: 18 | date: 2026-10-29 | status: taken | taken: 26 -->
 입력 대기 알림을 Node 전환 뒤 따로 만든다 — 브라우저 Notification API(창 닫으면 없음)와 상주 서버의 OS 알림(osascript·PowerShell 토스트·notify-send, 창 닫아도 옴) 중 고른다. 전환 중에는 탭 제목 표시뿐이다.
 
 <!-- followup: fu-f1485aa3da66 | source: node-web-app-1of4 | task: 18 | date: 2026-10-29 | status: open | taken: - -->
