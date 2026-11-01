@@ -98,3 +98,7 @@
 <!-- followup: fu-fac8aae17bea | source: electron-app-6of6 | task: 24 | date: 2026-10-31 | status: taken | taken: 25 -->
 - macOS CI 앱 스모크에서 다시 연 두 번째 앱이 창을 열지 못하고(`activate` 직후 `firstWindow` 30초 초과) 그대로 꺼지지 않았다. 짐작: 창 열기가 실패하면 `fail()`이 띄우는 `dialog.showErrorBox`가 앱을 붙잡아 종료까지 막는다(`electron/main.js` `fail`). 열기 실패의 원인과, 오류 창이 테스트·실제 앱 종료를 막는지 확인할 것. fu-5e0a7d31c4b2(`app.quit` 뒤 안 꺼짐)와 함께 볼 것.
   Evidence: run `41205397359` 시도 1 macOS 잡 — `▶ 5. 다시 실행` 뒤 90초 만에 `F`·`Worker teardown timeout of 60000ms exceeded`. 시도 2에서는 통과.
+
+<!-- followup: fu-2ddd5995f51b | source: app-quit-hang | task: 25 | date: 2026-11-01 | status: open | taken: - -->
+- fu-fac8aae17bea(macOS CI에서 다시 연 앱이 창을 못 만들고 멈춤)는 작업 #25에서 재현되지 않아 원인을 확정하지 못했다. 이제 그 경로는 앱을 붙잡지 않고 `app.log`·표준 오류에 `[열기: … ]` 까닭을 남긴다. CI에서 「다시 열면 같은 서버에 붙는다」가 다시 실패하면 그 줄로 원인(살아 있는 서버 확인 `running()` 3초 제한 실패 등)을 확정할 것.
+  Evidence: 작업 #25 run.md S2 — 이 Mac 10번·CI 9잡에서 0회. 원래 증상은 run `41205397359` 시도 1.
