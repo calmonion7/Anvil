@@ -49,13 +49,14 @@ async function launchApp(env: Record<string, string>) {
 /**
  * 앱을 끈다(Cmd+Q처럼 app.quit). Playwright close()는 앱의 출력 파이프가 닫히기까지 기다리는데, Linux CI에서는 끝나지 않았다(실측) —
  * 프로세스가 끝나는 것만 기다린다.
- * CI에서는 세 OS 모두 실행마다 앱 하나가 app.quit 뒤에도 가끔 남았다(주 프로세스·렌더러가 그대로 산다 — 원인 미확인, 후속 후보).
- * 이 테스트가 보려는 것은 "앱이 꺼져도 서버는 산다"라 강제로 끝내도 판정이 같으므로, 남은 프로세스와 경고를 찍고 끝낸 뒤 이어 간다.
+ * 30초 안에 끝나지 않으면 남은 프로세스를 찍고 강제로 끝낸 뒤 테스트를 실패시킨다. 예전엔 경고만 하고 넘어갔는데, 그 사이
+ * 끄는 중의 열기 실패가 오류 창으로 앱을 붙잡는 결함(작업 #25, fu-5e0a7d31c4b2)을 가렸다.
  */
 async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
   const proc = app.process();
   const exited = new Promise<boolean>((r) => (proc.exitCode !== null || proc.signalCode !== null ? r(true) : proc.once("exit", () => r(true))));
-  await app.evaluate(({ app }) => app.quit()).catch(() => {}); // 끝나며 연결이 끊겨도 된다
+  // 끝나며 연결이 끊겨도 된다. 주 프로세스가 붙잡혀 있으면 돌아오지 않으니 기다리지만은 않는다.
+  await Promise.race([app.evaluate(({ app }) => app.quit()).catch(() => {}), new Promise((r) => setTimeout(r, 30_000))]);
   const ok = await Promise.race([exited, new Promise<boolean>((r) => setTimeout(() => r(false), 30_000))]);
   if (!ok) {
     if (process.platform !== "win32") console.log(execSync("ps -eo pid,ppid,command | grep -i -E 'electron|anvil' | grep -v grep || true").toString());
@@ -75,6 +76,7 @@ async function quitApp(app: Awaited<ReturnType<typeof launchApp>>) {
   proc.stdout?.destroy();
   proc.stderr?.destroy();
   await Promise.race([app.close().catch(() => {}), new Promise((r) => setTimeout(r, 5_000))]);
+  expect(ok, `앱(${proc.pid})이 app.quit 뒤 30초 안에 끝나야 한다`).toBe(true);
 }
 /** 임시 폴더 정리 — Windows는 막 끝낸 서버·claude가 파일을 잠깐 쥐고 있어(CI 실측 EPERM) 다시 시도하고, 그래도 안 되면 둔다 */
 function cleanup(dir: string) {
@@ -153,6 +155,84 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
     step("6. 두 번째 앱 종료");
     await quitApp(second);
   } finally {
+    if (pid && alive(pid)) process.kill(pid);
+    cleanup(dataDir);
+  }
+});
+
+// 작업 #25: 창 열기가 실패해도(여기서는 포트를 남이 잡아 서버가 못 뜬다 — 20초 뒤 실패) 오류가 app.log·표준 오류에 남고,
+// 오류 창이 떠 있어도 app.quit 한 번에 앱이 끝난다. 예전 오류 창(showErrorBox)은 누를 때까지 주 프로세스를 붙잡아 CI에서 앱이 멈췄다.
+test("열기 실패: 오류가 남고 오류 창이 떠 있어도 앱이 꺼진다", async () => {
+  test.setTimeout(90_000);
+  const dataDir = mkdtempSync(join(tmpdir(), "anvil-app-fail-"));
+  const taken = createServer().listen(0, "127.0.0.1");
+  await new Promise((r) => taken.once("listening", r));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ANVIL_DATA_DIR: dataDir,
+    ANVIL_PORT: String((taken.address() as { port: number }).port),
+    ANVIL_SKIP_DEPS: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  try {
+    step("1. 포트를 잡아 둔 채 앱 실행");
+    const app = await launchApp(env);
+    let stderr = "";
+    app.process().stderr?.on("data", (d) => (stderr += d));
+    step("2. 오류 기록");
+    const appLog = () => {
+      try {
+        return readFileSync(join(dataDir, "app.log"), "utf8");
+      } catch {
+        return "";
+      }
+    };
+    await expect.poll(appLog, { timeout: 40_000 }).toContain("서버가 뜨지 않았습니다");
+    expect(stderr).toContain("서버가 뜨지 않았습니다");
+    step("3. 오류 창이 떠 있는 채 app.quit");
+    const proc = app.process();
+    const exited = new Promise<boolean>((r) => (proc.exitCode !== null || proc.signalCode !== null ? r(true) : proc.once("exit", () => r(true))));
+    const timeout = (ms: number) => new Promise<boolean>((r) => setTimeout(() => r(false), ms));
+    void Promise.race([app.evaluate(({ app }) => app.quit()), timeout(10_000)]).catch(() => {}); // 주 프로세스가 붙잡혀 있으면 돌아오지 않는다
+    const ok = await Promise.race([exited, timeout(10_000)]);
+    if (!ok) proc.kill("SIGKILL");
+    proc.stdout?.destroy();
+    proc.stderr?.destroy();
+    await Promise.race([app.close().catch(() => {}), timeout(5_000)]);
+    expect(ok, "오류 창이 떠 있어도 app.quit 뒤 10초 안에 앱이 끝나야 한다").toBe(true);
+  } finally {
+    taken.close();
+    cleanup(dataDir);
+  }
+});
+
+// 작업 #25: 시작한 창이 페이지를 다 읽기 전에 끄면 읽기가 끊긴다(ERR_FAILED). 예전엔 그 실패가 오류 창을 띄워 앱이 꺼지지 않았다
+// (fu-5e0a7d31c4b2 — 복구 테스트 20번에 1번꼴로 `[열기: start · 끄는 중]`). 창이 생기자마자 꺼도 강제 종료 없이 끝나야 한다.
+test("시작 중 끄기: 창이 생기자마자 꺼도 앱이 끝난다", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "anvil-app-early-"));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ANVIL_DATA_DIR: dataDir,
+    ANVIL_PORT: String(await freePort()),
+    ANVIL_SKIP_DEPS: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const serverPid = () => {
+    try {
+      return JSON.parse(readFileSync(join(dataDir, "server.json"), "utf8")).pid as number;
+    } catch {
+      return 0;
+    }
+  };
+  try {
+    for (let i = 1; i <= 5; i++) {
+      step(`${i}. 실행 → 창이 생기자마자 끄기`);
+      const app = await launchApp(env);
+      await app.firstWindow();
+      await quitApp(app);
+    }
+  } finally {
+    const pid = serverPid();
     if (pid && alive(pid)) process.kill(pid);
     cleanup(dataDir);
   }
