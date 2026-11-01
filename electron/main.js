@@ -4,7 +4,7 @@
 // 창은 서버 화면만 연다(contextIsolation · nodeIntegration 없음 · preload는 폴더 고르기 하나만 — preload.cjs). 서버 주소 밖으로는 이동하지 않고, 바깥 링크는 브라우저로 연다.
 import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron';
 import { spawn } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, watch } from 'node:fs';
+import { appendFileSync, closeSync, mkdirSync, openSync, watch } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { running } from '../server/instance.js';
@@ -113,9 +113,40 @@ function open() {
   return opening;
 }
 
+/** 끄는 중(Cmd+Q·app.quit 뒤)인지 — 그때 난 오류에는 창을 띄우지 않는다 */
+let quitting = false;
+app.on('before-quit', () => (quitting = true));
+
+/** 오류를 표준 오류와 `<데이터 폴더>/app.log`(600)에 남긴다. 서버 주소의 토큰은 가린다(CI 로그에는 표준 오류가 그대로 찍힌다). */
+function logError(e) {
+  const line = `${new Date().toISOString()} ${String(e?.stack ?? e?.message ?? e).replace(/token=[^\s&'"]+/g, 'token=…')}\n`;
+  process.stderr.write(line);
+  try {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    appendFileSync(join(dataDir, 'app.log'), line, { mode: 0o600 });
+  } catch {}
+}
+
+/**
+ * 오류 창 — 스크립트 없는 HTML 한 장. 닫으면 앱이 끝난다. OS 오류 창(dialog)은 쓰지 않는다: 예전 동기 오류 창은 누를 때까지
+ * 주 프로세스를 멈추고, macOS에서 부모 창 없는 showMessageBox도 모달이라 그동안 app.quit이 끝나지 않았다(실측 2026-11-01).
+ */
+function showError(message) {
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const html = `<!doctype html><meta charset="utf-8"><title>Anvil</title><body style="font:14px system-ui;margin:24px;white-space:pre-wrap">${esc(message)}`;
+  const w = new BrowserWindow({ width: 520, height: 220, title: 'Anvil', webPreferences: { sandbox: true, javascript: false } });
+  w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  w.on('closed', () => app.quit());
+}
+
+/** 창을 열지 못했다 — 남기고, 끄는 중이 아니면 오류 창을 보인다(CI에서 앱이 창도 없이 꺼지지 않던 원인, 작업 #25). */
 const fail = (e) => {
-  dialog.showErrorBox('Anvil', e?.message ?? String(e));
-  app.quit();
+  logError(e);
+  if (quitting) return;
+  app
+    .whenReady()
+    .then(() => showError(e?.message ?? String(e)))
+    .catch(() => app.quit());
 };
 
 /** 서버가 다시 떠 토큰이 바뀌면(옛 쿠키는 401) 열린 창을 새 토큰으로 다시 연다. */

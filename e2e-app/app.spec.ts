@@ -158,6 +158,52 @@ test("앱을 꺼도 서버가 살고, 다시 열면 같은 서버에 붙는다",
   }
 });
 
+// 작업 #25: 창 열기가 실패해도(여기서는 포트를 남이 잡아 서버가 못 뜬다 — 20초 뒤 실패) 오류가 app.log·표준 오류에 남고,
+// 오류 창이 떠 있어도 app.quit 한 번에 앱이 끝난다. 예전 오류 창(showErrorBox)은 누를 때까지 주 프로세스를 붙잡아 CI에서 앱이 멈췄다.
+test("열기 실패: 오류가 남고 오류 창이 떠 있어도 앱이 꺼진다", async () => {
+  test.setTimeout(90_000);
+  const dataDir = mkdtempSync(join(tmpdir(), "anvil-app-fail-"));
+  const taken = createServer().listen(0, "127.0.0.1");
+  await new Promise((r) => taken.once("listening", r));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ANVIL_DATA_DIR: dataDir,
+    ANVIL_PORT: String((taken.address() as { port: number }).port),
+    ANVIL_SKIP_DEPS: "1",
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+  try {
+    step("1. 포트를 잡아 둔 채 앱 실행");
+    const app = await launchApp(env);
+    let stderr = "";
+    app.process().stderr?.on("data", (d) => (stderr += d));
+    step("2. 오류 기록");
+    const appLog = () => {
+      try {
+        return readFileSync(join(dataDir, "app.log"), "utf8");
+      } catch {
+        return "";
+      }
+    };
+    await expect.poll(appLog, { timeout: 40_000 }).toContain("서버가 뜨지 않았습니다");
+    expect(stderr).toContain("서버가 뜨지 않았습니다");
+    step("3. 오류 창이 떠 있는 채 app.quit");
+    const proc = app.process();
+    const exited = new Promise<boolean>((r) => (proc.exitCode !== null || proc.signalCode !== null ? r(true) : proc.once("exit", () => r(true))));
+    const timeout = (ms: number) => new Promise<boolean>((r) => setTimeout(() => r(false), ms));
+    void Promise.race([app.evaluate(({ app }) => app.quit()), timeout(10_000)]).catch(() => {}); // 주 프로세스가 붙잡혀 있으면 돌아오지 않는다
+    const ok = await Promise.race([exited, timeout(10_000)]);
+    if (!ok) proc.kill("SIGKILL");
+    proc.stdout?.destroy();
+    proc.stderr?.destroy();
+    await Promise.race([app.close().catch(() => {}), timeout(5_000)]);
+    expect(ok, "오류 창이 떠 있어도 app.quit 뒤 10초 안에 앱이 끝나야 한다").toBe(true);
+  } finally {
+    taken.close();
+    cleanup(dataDir);
+  }
+});
+
 // 데스크톱 앱 2/6: 세션 열기 → 앱 끄기 → 서버 강제 종료(SIGKILL — 재부팅 흉내) → 앱 다시 실행 → 같은 세션이 `--resume <대화 ID>`로 다시 산다.
 test("서버가 강제 종료돼도 다시 연 앱에서 세션이 --resume으로 복구된다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "anvil-app-restore-"));
